@@ -43,6 +43,7 @@ TRIPLE_OS(IOS, "ios", "iOS")
 TRIPLE_OS(KFreeBSD, "kfreebsd", "FreeBSD")
 TRIPLE_OS(Linux, "linux", "Linux")
 TRIPLE_OS(Lv2, "lv2", "Generic")
+TRIPLE_OS(Xbox360, "xbox360", "Generic")
 TRIPLE_OS(MacOSX, "macosx", "Darwin")
 TRIPLE_OS_ALIAS(MacOSX, "macos")
 TRIPLE_OS(Managarm, "managarm", "Generic")
@@ -161,6 +162,7 @@ TRIPLE_ENV(PAuthTest, "pauthtest", "")
 TRIPLE_ENV(LLVM, "llvm", "")
 TRIPLE_ENV(Mlibc, "mlibc", "")
 TRIPLE_ENV(MTIA, "mtia", "")
+TRIPLE_ENV(ILP32, "ilp32", "")
 
 #undef TRIPLE_ENV
 
