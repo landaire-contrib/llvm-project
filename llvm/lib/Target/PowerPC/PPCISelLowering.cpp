@@ -3250,7 +3250,7 @@ SDValue PPCTargetLowering::LowerBlockAddress(SDValue Op,
   }
 
   // 32-bit position-independent ELF stores the BlockAddress in the .got.
-  if (Subtarget.is32BitELFABI() && isPositionIndependent())
+  if (Subtarget.uses32BitSVR4ABI() && isPositionIndependent())
     return getTOCEntry(
         DAG, SDLoc(BASDN),
         DAG.getTargetBlockAddress(BA, PtrVT, BASDN->getOffset()));
@@ -5686,7 +5686,7 @@ static SDValue transformCallee(const SDValue &Callee, SelectionDAG &DAG,
   // least) to force BSS-PLT, instead of secure-PLT, even if all objects are
   // built with secure-PLT.
   bool UsePlt =
-      Subtarget.is32BitELFABI() && !isLocalCallee() &&
+      Subtarget.uses32BitSVR4ABI() && !isLocalCallee() &&
       Subtarget.getTargetMachine().getRelocationModel() == Reloc::PIC_;
 
   const auto getAIXFuncEntryPointSymbolSDNode = [&](const GlobalValue *GV) {

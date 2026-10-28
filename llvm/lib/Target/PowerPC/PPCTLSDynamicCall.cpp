@@ -49,7 +49,7 @@ protected:
       bool NeedFence = true;
       const PPCSubtarget &Subtarget =
           MBB.getParent()->getSubtarget<PPCSubtarget>();
-      bool Is64Bit = Subtarget.isPPC64();
+      bool Is64Bit = Subtarget.usesPPC64ABI();
       bool IsAIX = Subtarget.isAIXABI();
       bool IsLargeModel =
           Subtarget.getTargetMachine().getCodeModel() == CodeModel::Large;

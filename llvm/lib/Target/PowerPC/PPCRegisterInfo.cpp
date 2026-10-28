@@ -398,13 +398,13 @@ BitVector PPCRegisterInfo::getReservedRegs(const MachineFunction &MF) const {
 
   bool IsPositionIndependent = TM.isPositionIndependent();
   if (hasBasePointer(MF)) {
-    if (Subtarget.is32BitELFABI() && IsPositionIndependent)
+    if (Subtarget.uses32BitSVR4ABI() && IsPositionIndependent)
       markSuperRegs(Reserved, PPC::R29);
     else
       markSuperRegs(Reserved, PPC::R30);
   }
 
-  if (Subtarget.is32BitELFABI() && IsPositionIndependent)
+  if (Subtarget.uses32BitSVR4ABI() && IsPositionIndependent)
     markSuperRegs(Reserved, PPC::R30);
 
   // Reserve Altivec registers when Altivec is unavailable.

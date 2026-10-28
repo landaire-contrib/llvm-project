@@ -725,14 +725,16 @@ void PPCAsmPrinter::emitTlsCall(const MachineInstr *MI,
   }
   const Module *M = MF->getFunction().getParent();
 
-  assert(MI->getOperand(0).isReg() &&
-         ((Subtarget->isPPC64() && MI->getOperand(0).getReg() == PPC::X3) ||
-          (!Subtarget->isPPC64() && MI->getOperand(0).getReg() == PPC::R3)) &&
-         "GETtls[ld]ADDR[32] must define GPR3");
-  assert(MI->getOperand(1).isReg() &&
-         ((Subtarget->isPPC64() && MI->getOperand(1).getReg() == PPC::X3) ||
-          (!Subtarget->isPPC64() && MI->getOperand(1).getReg() == PPC::R3)) &&
-         "GETtls[ld]ADDR[32] must read GPR3");
+  assert(
+      MI->getOperand(0).isReg() &&
+      ((Subtarget->usesPPC64ABI() && MI->getOperand(0).getReg() == PPC::X3) ||
+       (!Subtarget->usesPPC64ABI() && MI->getOperand(0).getReg() == PPC::R3)) &&
+      "GETtls[ld]ADDR[32] must define GPR3");
+  assert(
+      MI->getOperand(1).isReg() &&
+      ((Subtarget->usesPPC64ABI() && MI->getOperand(1).getReg() == PPC::X3) ||
+       (!Subtarget->usesPPC64ABI() && MI->getOperand(1).getReg() == PPC::R3)) &&
+      "GETtls[ld]ADDR[32] must read GPR3");
 
   if (Subtarget->isAIXABI()) {
     // For TLSGD, the variable offset should already be in R4 and the region
@@ -752,7 +754,7 @@ void PPCAsmPrinter::emitTlsCall(const MachineInstr *MI,
 
   MCSymbol *TlsGetAddr = OutContext.getOrCreateSymbol("__tls_get_addr");
 
-  if (Subtarget->is32BitELFABI() && isPositionIndependent())
+  if (Subtarget->uses32BitSVR4ABI() && isPositionIndependent())
     Kind = PPC::S_PLT;
 
   const MCExpr *TlsRef = MCSymbolRefExpr::create(TlsGetAddr, Kind, OutContext);
@@ -766,11 +768,11 @@ void PPCAsmPrinter::emitTlsCall(const MachineInstr *MI,
   const GlobalValue *GValue = MO.getGlobal();
   MCSymbol *MOSymbol = getSymbol(GValue);
   const MCExpr *SymVar = MCSymbolRefExpr::create(MOSymbol, VK, OutContext);
-  EmitToStreamer(*OutStreamer,
-                 MCInstBuilder(Subtarget->isPPC64() ? Opcode
-                                                    : (unsigned)PPC::BL_TLS)
-                     .addExpr(TlsRef)
-                     .addExpr(SymVar));
+  EmitToStreamer(
+      *OutStreamer,
+      MCInstBuilder(Subtarget->usesPPC64ABI() ? Opcode : (unsigned)PPC::BL_TLS)
+          .addExpr(TlsRef)
+          .addExpr(SymVar));
 }
 
 /// Map a machine operand for a TOC pseudo-machine instruction to its
@@ -1455,13 +1457,15 @@ void PPCAsmPrinter::emitInstruction(const MachineInstr *MI) {
     const MachineOperand &MO = MI->getOperand(2);
     const GlobalValue *GValue = MO.getGlobal();
     MCSymbol *MOSymbol = getSymbol(GValue);
+    // The 32-bit pseudo is used whenever pointers are 32 bits wide.
+    bool Is64BitAdd = MI->getOpcode() == PPC::ADDItlsgdL;
     const MCExpr *SymGotTlsGD = symbolWithSpecifier(
-        MOSymbol, IsPPC64 ? PPC::S_GOT_TLSGD_LO : PPC::S_GOT_TLSGD);
+        MOSymbol, Is64BitAdd ? PPC::S_GOT_TLSGD_LO : PPC::S_GOT_TLSGD);
     EmitToStreamer(*OutStreamer,
-                   MCInstBuilder(IsPPC64 ? PPC::ADDI8 : PPC::ADDI)
-                   .addReg(MI->getOperand(0).getReg())
-                   .addReg(MI->getOperand(1).getReg())
-                   .addExpr(SymGotTlsGD));
+                   MCInstBuilder(Is64BitAdd ? PPC::ADDI8 : PPC::ADDI)
+                       .addReg(MI->getOperand(0).getReg())
+                       .addReg(MI->getOperand(1).getReg())
+                       .addExpr(SymGotTlsGD));
     return;
   }
   case PPC::GETtlsMOD32AIX:
@@ -1514,10 +1518,12 @@ void PPCAsmPrinter::emitInstruction(const MachineInstr *MI) {
     const MachineOperand &MO = MI->getOperand(2);
     const GlobalValue *GValue = MO.getGlobal();
     MCSymbol *MOSymbol = getSymbol(GValue);
+    // The 32-bit pseudo is used whenever pointers are 32 bits wide.
+    bool Is64BitAdd = MI->getOpcode() == PPC::ADDItlsldL;
     const MCExpr *SymGotTlsLD = symbolWithSpecifier(
-        MOSymbol, IsPPC64 ? PPC::S_GOT_TLSLD_LO : PPC::S_GOT_TLSLD);
+        MOSymbol, Is64BitAdd ? PPC::S_GOT_TLSLD_LO : PPC::S_GOT_TLSLD);
     EmitToStreamer(*OutStreamer,
-                   MCInstBuilder(IsPPC64 ? PPC::ADDI8 : PPC::ADDI)
+                   MCInstBuilder(Is64BitAdd ? PPC::ADDI8 : PPC::ADDI)
                        .addReg(MI->getOperand(0).getReg())
                        .addReg(MI->getOperand(1).getReg())
                        .addExpr(SymGotTlsLD));
@@ -1986,8 +1992,7 @@ void PPCLinuxAsmPrinter::emitStartOfAsmFile(Module &M) {
     TS->emitAbiVersion(2);
   }
 
-  if (static_cast<const PPCTargetMachine &>(TM).isPPC64() ||
-      !isPositionIndependent())
+  if (PPC::usesPPC64ABI(TM.getTargetTriple()) || !isPositionIndependent())
     return AsmPrinter::emitStartOfAsmFile(M);
 
   if (M.getPICLevel() == PICLevel::SmallPIC)
@@ -2014,16 +2019,13 @@ void PPCLinuxAsmPrinter::emitStartOfAsmFile(Module &M) {
 }
 
 void PPCLinuxAsmPrinter::emitFunctionEntryLabel() {
-  if (Subtarget->isXbox360())
-    return AsmPrinter::emitFunctionEntryLabel();
-
   // linux/ppc32 - Normal entry label.
-  if (!Subtarget->isPPC64() &&
+  if (!Subtarget->usesPPC64ABI() &&
       (!isPositionIndependent() ||
        MF->getFunction().getParent()->getPICLevel() == PICLevel::SmallPIC))
     return AsmPrinter::emitFunctionEntryLabel();
 
-  if (!Subtarget->isPPC64()) {
+  if (!Subtarget->usesPPC64ABI()) {
     const PPCFunctionInfo *PPCFI = MF->getInfo<PPCFunctionInfo>();
     if (PPCFI->usesPICBase() && !Subtarget->isSecurePlt()) {
       MCSymbol *RelocSymbol = PPCFI->getPICOffsetSymbol(*MF);
