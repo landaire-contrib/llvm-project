@@ -163,6 +163,13 @@ static std::string computeFSAdditions(StringRef FS, CodeGenOptLevel OL,
       FullFS = "+64bit";
   }
 
+  if (TT.getOS() == Triple::Xbox360) {
+    if (!FullFS.empty())
+      FullFS += ",+xbox360";
+    else
+      FullFS = "+xbox360";
+  }
+
   if (OL >= CodeGenOptLevel::Default) {
     if (!FullFS.empty())
       FullFS = "+crbits," + FullFS;
@@ -170,7 +177,7 @@ static std::string computeFSAdditions(StringRef FS, CodeGenOptLevel OL,
       FullFS = "+crbits";
   }
 
-  if (OL != CodeGenOptLevel::None) {
+  if (OL != CodeGenOptLevel::None && TT.getOS() != Triple::Xbox360) {
     if (!FullFS.empty())
       FullFS = "+invariant-function-descriptors," + FullFS;
     else
@@ -204,6 +211,8 @@ PPCABI PPCTargetMachine::computeABI(const Triple &TT, StringRef ABIName) {
   if (TT.isOSAIX())
     return ABIName == "vec-extabi" ? PPC_ABI_AIX_EXTABI : PPC_ABI_UNKNOWN;
 
+  if (TT.getOS() == Triple::Xbox360)
+    return PPC_ABI_UNKNOWN;
   switch (TT.getArch()) {
   case Triple::ppc64le:
     return PPC_ABI_ELFv2;
@@ -222,6 +231,9 @@ static Reloc::Model getEffectiveRelocModel(const Triple &TT,
 
   if (RM)
     return *RM;
+
+  if (TT.getOS() == Triple::Xbox360)
+    return Reloc::Static;
 
   // Big Endian PPC and AIX default to PIC.
   if (TT.getArch() == Triple::ppc64 || TT.isOSAIX())
@@ -250,6 +262,9 @@ getEffectivePPCCodeModel(const Triple &TT, std::optional<CodeModel::Model> CM,
       return CodeModel::Large;
     return CodeModel::Small;
   }
+
+  if (TT.getOS() == Triple::Xbox360)
+    return CodeModel::Small;
 
   assert(TT.isOSBinFormatELF() && "All remaining PPC OSes are ELF based.");
 

@@ -118,6 +118,14 @@ void PPCSubtarget::initSubtargetFeatures(StringRef CPU, StringRef TuneCPU,
   // Determine endianness.
   IsLittleEndian = TM.isLittleEndian();
 
+  if (isXbox360() && (!isPPC64() || isLittleEndian() ||
+                      getTargetTriple().getOS() != Triple::Xbox360 ||
+                      !getTargetTriple().isPPC64ILP32ABI() ||
+                      !getTargetTriple().isOSBinFormatELF()))
+    report_fatal_error("xbox360 requires a big-endian "
+                       "powerpc64-unknown-xbox360-ilp32 ELF target\n",
+                       false);
+
   if (HasAIXSmallLocalExecTLS || HasAIXSmallLocalDynamicTLS) {
     if (!getTargetTriple().isOSAIX() || !IsPPC64)
       report_fatal_error("The aix-small-local-[exec|dynamic]-tls attribute is "

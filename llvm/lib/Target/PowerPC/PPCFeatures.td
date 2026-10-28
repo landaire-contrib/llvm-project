@@ -67,6 +67,9 @@ def FeatureHardFloat : SubtargetFeature<"hard-float", "HasHardFloat", "true",
 // in 32-bit mode when possible. Requires Feature64Bit to be enabled.
 def Feature64BitRegs : SubtargetFeature<"64bitregs","Use64BitRegs", "true",
                               "Enable 64-bit registers usage for ppc32 [beta]">;
+def FeatureXbox360 : SubtargetFeature<
+    "xbox360", "IsXbox360", "true", "Use the experimental Xbox 360 ABI",
+    [Feature64BitSupport, Feature64BitRegs], InlineMustMatch>;
 
 // Specify if we should store and manipulate i1 values in the individual
 // condition register bits.
@@ -379,6 +382,7 @@ def IsLittleEndian : Predicate<"Subtarget->isLittleEndian()">;
 def IsBigEndian : Predicate<"!Subtarget->isLittleEndian()">;
 def IsPPC32 : Predicate<"!Subtarget->isPPC64()">;
 def IsPPC64 : Predicate<"Subtarget->isPPC64()">;
+def Has64BitAddresses : Predicate<"Subtarget->has64BitAddresses()">;
 def IsBookE  : Predicate<"Subtarget->isBookE()">;
 def IsNotBookE  : Predicate<"!Subtarget->isBookE()">;
 def HasOnlyMSYNC : Predicate<"Subtarget->hasOnlyMSYNC()">;

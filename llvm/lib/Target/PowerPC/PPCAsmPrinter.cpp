@@ -1976,6 +1976,9 @@ void PPCLinuxAsmPrinter::emitStartOfAsmFile(Module &M) {
 }
 
 void PPCLinuxAsmPrinter::emitFunctionEntryLabel() {
+  if (Subtarget->isXbox360())
+    return AsmPrinter::emitFunctionEntryLabel();
+
   // linux/ppc32 - Normal entry label.
   if (!Subtarget->isPPC64() &&
       (!isPositionIndependent() ||
@@ -2224,14 +2227,14 @@ void PPCLinuxAsmPrinter::emitFunctionBodyStart() {
 /// directive.
 ///
 void PPCLinuxAsmPrinter::emitFunctionBodyEnd() {
-  // Only the 64-bit target requires a traceback table.  For now,
+  // Only the 64-bit ELF ABI requires a traceback table.  For now,
   // we only emit the word of zeroes that GDB requires to find
   // the end of the function, and zeroes for the eight-byte
   // mandatory fields.
   // FIXME: We should fill in the eight-byte mandatory fields as described in
   // the PPC64 ELF ABI (this is a low-priority item because GDB does not
   // currently make use of these fields).
-  if (Subtarget->isPPC64()) {
+  if (Subtarget->is64BitELFABI()) {
     OutStreamer->emitIntValue(0, 4/*size*/);
     OutStreamer->emitIntValue(0, 8/*size*/);
   }

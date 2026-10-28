@@ -208,6 +208,8 @@ static std::string computePowerDataLayout(const Triple &T, StringRef ABIName) {
   // If the target ABI uses function descriptors, then the alignment of function
   // pointers depends on the alignment used to emit the descriptor. Otherwise,
   // function pointers are aligned to 32 bits because the instructions must be.
+  // ILP32 does not determine the function pointer representation: LV2 uses
+  // ELFv1 descriptors, while Xbox 360 uses direct pointers.
   if (T.getArch() == Triple::ppc64 && T.getOS() != Triple::Xbox360 &&
       (!T.isPPC64ELFv2ABI() && ABIName != "elfv2")) {
     Ret += "-Fi64";
