@@ -109,6 +109,10 @@ private:
   /// VarArgsFrameIndex - FrameIndex for start of varargs area.
   int VarArgsFrameIndex = 0;
 
+  /// Virtual register holding the incoming sret pointer, which the Xbox 360
+  /// returns in r3.
+  Register SRetReturnReg;
+
   /// VarArgsStackOffset - StackOffset for start of stack
   /// arguments.
 
@@ -235,6 +239,9 @@ public:
 
   int getVarArgsFrameIndex() const { return VarArgsFrameIndex; }
   void setVarArgsFrameIndex(int Index) { VarArgsFrameIndex = Index; }
+
+  Register getSRetReturnReg() const { return SRetReturnReg; }
+  void setSRetReturnReg(Register Reg) { SRetReturnReg = Reg; }
 
   int getVarArgsStackOffset() const { return VarArgsStackOffset; }
   void setVarArgsStackOffset(int Offset) { VarArgsStackOffset = Offset; }

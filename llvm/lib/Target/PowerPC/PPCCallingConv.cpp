@@ -62,6 +62,17 @@ static bool CC_PPC32_SVR4_Custom_Dummy(unsigned &ValNo, MVT &ValVT, MVT &LocVT,
   return true;
 }
 
+// Each Xbox 360 argument has a positional slot in the parameter area. The
+// CCState stack starts after the slots of all eight argument GPRs, and
+// arguments in GPRs allocate no stack, so the next slot lies below the stack
+// size by the slots of the GPRs that are still free.
+unsigned llvm::getXbox360ArgOffset(const CCState &State) {
+  static const MCPhysReg GPRs[] = {PPC::X3, PPC::X4, PPC::X5, PPC::X6,
+                                   PPC::X7, PPC::X8, PPC::X9, PPC::X10};
+  return State.getStackSize() -
+         8 * (std::size(GPRs) - State.getFirstUnallocated(GPRs));
+}
+
 static bool CC_Xbox360_AssignStackSlot(unsigned &ValNo, MVT &ValVT, MVT &LocVT,
                                        CCValAssign::LocInfo &LocInfo,
                                        ISD::ArgFlagsTy &ArgFlags,
@@ -70,6 +81,88 @@ static bool CC_Xbox360_AssignStackSlot(unsigned &ValNo, MVT &ValVT, MVT &LocVT,
   if (LocVT == MVT::i32)
     Offset += 4;
   State.addLoc(CCValAssign::getMem(ValNo, ValVT, Offset, LocVT, LocInfo));
+  return true;
+}
+
+static bool CC_Xbox360_AssignFixedFloat(unsigned &ValNo, MVT &ValVT, MVT &LocVT,
+                                        CCValAssign::LocInfo &LocInfo,
+                                        ISD::ArgFlagsTy &ArgFlags,
+                                        CCState &State) {
+  static const MCPhysReg GPRs[] = {PPC::X3, PPC::X4, PPC::X5, PPC::X6,
+                                   PPC::X7, PPC::X8, PPC::X9, PPC::X10};
+  static const MCPhysReg FPRs[] = {
+      PPC::F1, PPC::F2, PPC::F3,  PPC::F4,  PPC::F5,  PPC::F6,  PPC::F7,
+      PPC::F8, PPC::F9, PPC::F10, PPC::F11, PPC::F12, PPC::F13,
+  };
+
+  MCRegister GPR = State.AllocateReg(GPRs);
+  unsigned Offset = 0;
+  if (!GPR)
+    Offset = State.AllocateStack(8, Align(8));
+
+  if (MCRegister FPR = State.AllocateReg(FPRs)) {
+    State.addLoc(CCValAssign::getReg(ValNo, ValVT, FPR, LocVT, LocInfo));
+    return true;
+  }
+
+  assert(!GPR && "FPRs cannot be exhausted before argument GPRs");
+  if (LocVT == MVT::f32)
+    Offset += 4;
+  State.addLoc(CCValAssign::getMem(ValNo, ValVT, Offset, LocVT, LocInfo));
+  return true;
+}
+
+static bool CC_Xbox360_AssignVarArgFloat(unsigned &ValNo, MVT &ValVT,
+                                         MVT &LocVT,
+                                         CCValAssign::LocInfo &LocInfo,
+                                         ISD::ArgFlagsTy &ArgFlags,
+                                         CCState &State) {
+  static const MCPhysReg GPRs[] = {PPC::X3, PPC::X4, PPC::X5, PPC::X6,
+                                   PPC::X7, PPC::X8, PPC::X9, PPC::X10};
+  static const MCPhysReg FPRs[] = {
+      PPC::F1, PPC::F2, PPC::F3,  PPC::F4,  PPC::F5,  PPC::F6,  PPC::F7,
+      PPC::F8, PPC::F9, PPC::F10, PPC::F11, PPC::F12, PPC::F13,
+  };
+
+  if (MCRegister GPR = State.AllocateReg(GPRs)) {
+    State.addLoc(
+        CCValAssign::getReg(ValNo, ValVT, GPR, MVT::i64, CCValAssign::BCvt));
+  } else {
+    unsigned Offset = State.AllocateStack(8, Align(8));
+    State.addLoc(CCValAssign::getMem(ValNo, ValVT, Offset, LocVT, LocInfo));
+  }
+
+  if (MCRegister FPR = State.AllocateReg(FPRs))
+    State.addLoc(CCValAssign::getReg(ValNo, ValVT, FPR, LocVT, LocInfo));
+  return true;
+}
+
+static bool CC_Xbox360_AssignByVal(unsigned &ValNo, MVT &ValVT, MVT &LocVT,
+                                   CCValAssign::LocInfo &LocInfo,
+                                   ISD::ArgFlagsTy &ArgFlags, CCState &State) {
+  static const MCPhysReg GPRs[] = {PPC::X3, PPC::X4, PPC::X5, PPC::X6,
+                                   PPC::X7, PPC::X8, PPC::X9, PPC::X10};
+
+  unsigned Size = ArgFlags.getByValSize();
+  if (Size > 8) {
+    unsigned Offset = getXbox360ArgOffset(State);
+    unsigned Padding = alignTo(Offset, 16) - Offset;
+    if (Padding)
+      State.AllocateStack(Padding, Align(8));
+  }
+  for (unsigned Offset = 0; Offset < Size; Offset += 8) {
+    if (MCRegister Reg = State.AllocateReg(GPRs)) {
+      State.addLoc(CCValAssign::getCustomReg(ValNo, ValVT, Reg, MVT::i64,
+                                             CCValAssign::Full));
+      continue;
+    }
+
+    unsigned StackSize = alignTo(Size - Offset, 8);
+    unsigned StackOffset = State.AllocateStack(StackSize, Align(8));
+    State.addLoc(
+        CCValAssign::getCustomMem(ValNo, ValVT, StackOffset, LocVT, LocInfo));
+    break;
+  }
   return true;
 }
 

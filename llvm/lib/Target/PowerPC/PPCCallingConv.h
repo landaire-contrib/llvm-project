@@ -45,6 +45,9 @@ bool CC_PPC32_SVR4_VarArg(unsigned ValNo, MVT ValVT, MVT LocVT,
                           ISD::ArgFlagsTy ArgFlags, Type *OrigTy,
                           CCState &State);
 
+/// Offset of the next positional Xbox 360 parameter area slot.
+unsigned getXbox360ArgOffset(const CCState &State);
+
 } // End llvm namespace
 
 #endif

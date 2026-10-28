@@ -193,7 +193,14 @@ def RetCC_PPC64_ELF_FIS : CallingConv<[
 //===----------------------------------------------------------------------===//
 
 def CC_PPC32_SVR4_Common : CallingConv<[
+  CCIfByVal<
+      CCIfSubtarget<"isXbox360()",
+                    CCCustom<"CC_Xbox360_AssignByVal">>>,
   CCIfType<[i1], CCPromoteToType<i32>>,
+
+  CCIfType<[f32, f64],
+           CCIfSubtarget<"isXbox360()",
+                         CCCustom<"CC_Xbox360_AssignFixedFloat">>>,
 
   CCIfType<[i64],
            CCIfSubtarget<"isXbox360()",
@@ -260,6 +267,9 @@ def CC_PPC32_SVR4_Common : CallingConv<[
 // parameter list of a variable argument function.
 let Entry = 1 in
 def CC_PPC32_SVR4_VarArg : CallingConv<[
+  CCIfType<[f64],
+           CCIfSubtarget<"isXbox360()",
+                         CCCustom<"CC_Xbox360_AssignVarArgFloat">>>,
   CCDelegateTo<CC_PPC32_SVR4_Common>
 ]>;
 

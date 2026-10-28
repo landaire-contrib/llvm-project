@@ -3743,9 +3743,9 @@ SDValue PPCTargetLowering::LowerVAARG(SDValue Op, SelectionDAG &DAG) const {
          "LowerVAARG is only supported for PPC32 SVR4 and Xbox 360");
 
   if (Subtarget.isXbox360()) {
-    if (VT != MVT::i32 && VT != MVT::i64)
+    if (VT != MVT::i32 && VT != MVT::i64 && VT != MVT::f64)
       report_fatal_error(
-          "only i32, pointer, and i64 va_arg types are supported by the "
+          "only i32, pointer, i64, and f64 va_arg types are supported by the "
           "xbox360 feature\n",
           false);
 
@@ -4227,9 +4227,12 @@ static unsigned EnsureStackAlignment(const PPCFrameLowering *Lowering,
 static bool isSupportedXbox360Argument(const ISD::ArgFlagsTy &Flags,
                                        const Type *OrigTy) {
   if (Flags.isByVal())
-    return false;
+    return !Flags.isVarArg() && Flags.getByValSize() != 0;
   if (const auto *IntTy = dyn_cast_or_null<IntegerType>(OrigTy))
-    return IntTy->getBitWidth() <= 64;
+    return IntTy->getBitWidth() <= 128;
+  if (OrigTy &&
+      (OrigTy->isHalfTy() || OrigTy->isFloatTy() || OrigTy->isDoubleTy()))
+    return !Flags.isVarArg() || OrigTy->isDoubleTy();
   return OrigTy && OrigTy->isPointerTy();
 }
 
@@ -4296,8 +4299,9 @@ SDValue PPCTargetLowering::LowerFormalArguments_32SVR4(
         return !isSupportedXbox360Argument(Arg.Flags, Arg.OrigTy);
       }))
     report_fatal_error(
-        "only integer and pointer arguments are supported by the xbox360 "
-        "feature\n",
+        "unsupported xbox360 argument type; supported types are integers up "
+        "to 128 bits, pointers, fixed f16/f32/f64, variadic f64, and nonempty "
+        "fixed byval aggregates\n",
         false);
 
   // Assign locations to all of the incoming arguments.
@@ -4310,10 +4314,67 @@ SDValue PPCTargetLowering::LowerFormalArguments_32SVR4(
   unsigned MinParameterArea = Subtarget.isXbox360() ? 64 : 0;
   CCInfo.AllocateStack(LinkageSize + MinParameterArea,
                        Subtarget.isXbox360() ? Align(8) : PtrAlign);
-  CCInfo.AnalyzeFormalArguments(Ins, CC_PPC32_SVR4);
+
+  // Record the positional slot of each Xbox 360 byval argument, where the
+  // callee stores the parts passed in registers.
+  DenseMap<unsigned, unsigned> Xbox360ByValOffsets;
+  if (Subtarget.isXbox360()) {
+    for (unsigned I = 0, E = Ins.size(); I != E; ++I) {
+      ISD::ArgFlagsTy Flags = Ins[I].Flags;
+      if (Flags.isByVal())
+        Xbox360ByValOffsets[I] = alignTo(getXbox360ArgOffset(CCInfo),
+                                         Flags.getByValSize() > 8 ? 16 : 8);
+      if (CC_PPC32_SVR4(I, Ins[I].VT, Ins[I].VT, CCValAssign::Full, Flags,
+                        Ins[I].OrigTy, CCInfo))
+        llvm_unreachable("unhandled xbox360 argument");
+    }
+  } else {
+    CCInfo.AnalyzeFormalArguments(Ins, CC_PPC32_SVR4);
+  }
+
+  SmallVector<SDValue, 8> MemOps;
 
   for (unsigned i = 0, e = ArgLocs.size(); i != e; ++i) {
     CCValAssign &VA = ArgLocs[i];
+
+    if (Subtarget.isXbox360() && Ins[VA.getValNo()].Flags.isByVal()) {
+      unsigned ValNo = VA.getValNo();
+      unsigned ByValSize = Ins[ValNo].Flags.getByValSize();
+      unsigned BaseOffset = Xbox360ByValOffsets.lookup(ValNo);
+      int FI = MFI.CreateFixedObject(alignTo(ByValSize, 8), BaseOffset,
+                                     /*IsImmutable=*/false,
+                                     /*IsAliased=*/true);
+      SDValue FIN = DAG.getFrameIndex(FI, PtrVT);
+      unsigned Offset = 0;
+
+      while (i != e && ArgLocs[i].getValNo() == ValNo) {
+        CCValAssign &ByValVA = ArgLocs[i];
+        if (ByValVA.isRegLoc()) {
+          Register VReg = MF.addLiveIn(ByValVA.getLocReg(), &PPC::G8RCRegClass);
+          SDValue Val = DAG.getCopyFromReg(Chain, dl, VReg, MVT::i64);
+          SDValue Address =
+              Offset == 0
+                  ? FIN
+                  : DAG.getObjectPtrOffset(dl, FIN, TypeSize::getFixed(Offset));
+          MachinePointerInfo MPI =
+              MachinePointerInfo::getFixedStack(MF, FI, Offset);
+          MemOps.push_back(
+              DAG.getStore(Val.getValue(1), dl, Val, Address, MPI));
+          Offset += 8;
+        } else {
+          assert(ByValVA.getLocMemOffset() == BaseOffset + Offset &&
+                 "noncontiguous xbox360 byval stack location");
+        }
+        ++i;
+      }
+      --i;
+      // A 1, 2 or 4-byte aggregate is right-justified in its slot.
+      if (ByValSize == 1 || ByValSize == 2 || ByValSize == 4)
+        FIN =
+            DAG.getObjectPtrOffset(dl, FIN, TypeSize::getFixed(8 - ByValSize));
+      InVals.push_back(FIN);
+      continue;
+    }
 
     // Arguments stored in registers.
     if (VA.isRegLoc()) {
@@ -4400,20 +4461,19 @@ SDValue PPCTargetLowering::LowerFormalArguments_32SVR4(
     }
   }
 
-  // Assign locations to all of the incoming aggregate by value arguments.
-  // Aggregates passed by value are stored in the local variable space of the
-  // caller's stack frame, right above the parameter list area.
-  SmallVector<CCValAssign, 16> ByValArgLocs;
-  CCState CCByValInfo(CallConv, isVarArg, DAG.getMachineFunction(),
-                      ByValArgLocs, *DAG.getContext());
-
-  // Reserve stack space for the allocations in CCInfo.
-  CCByValInfo.AllocateStack(CCInfo.getStackSize(), PtrAlign);
-
-  CCByValInfo.AnalyzeFormalArguments(Ins, CC_PPC32_SVR4_ByVal);
-
-  // Area that is at least reserved in the caller of this function.
-  unsigned MinReservedArea = CCByValInfo.getStackSize();
+  unsigned MinReservedArea;
+  if (Subtarget.isXbox360()) {
+    MinReservedArea = CCInfo.getStackSize();
+  } else {
+    // Aggregates passed by value are stored in the local variable space of the
+    // caller's stack frame, right above the parameter list area.
+    SmallVector<CCValAssign, 16> ByValArgLocs;
+    CCState CCByValInfo(CallConv, isVarArg, DAG.getMachineFunction(),
+                        ByValArgLocs, *DAG.getContext());
+    CCByValInfo.AllocateStack(CCInfo.getStackSize(), PtrAlign);
+    CCByValInfo.AnalyzeFormalArguments(Ins, CC_PPC32_SVR4_ByVal);
+    MinReservedArea = CCByValInfo.getStackSize();
+  }
   MinReservedArea = std::max(MinReservedArea, LinkageSize + MinParameterArea);
 
   // Set the size that is at least reserved in caller of this function.  Tail
@@ -4423,8 +4483,6 @@ SDValue PPCTargetLowering::LowerFormalArguments_32SVR4(
   MinReservedArea =
       EnsureStackAlignment(Subtarget.getFrameLowering(), MinReservedArea);
   FuncInfo->setMinReservedArea(MinReservedArea);
-
-  SmallVector<SDValue, 8> MemOps;
 
   // If the function takes variable number of arguments, make a frame index for
   // the start of the first vararg value... for expansion of llvm.va_start.
@@ -4439,10 +4497,12 @@ SDValue PPCTargetLowering::LowerFormalArguments_32SVR4(
       VarArgsFrameIndex = MFI.CreateFixedObject(
           8, CCInfo.getStackSize(), /*IsImmutable=*/true, /*IsAliased=*/true);
     } else {
+      // The remaining GPRs are stored to the positional slots that follow the
+      // fixed arguments.
       unsigned SaveAreaSize = (std::size(GPArgRegs) - FirstUnallocated) * 8;
-      VarArgsFrameIndex = MFI.CreateFixedObject(
-          SaveAreaSize, LinkageSize + FirstUnallocated * 8,
-          /*IsImmutable=*/false, /*IsAliased=*/true);
+      VarArgsFrameIndex =
+          MFI.CreateFixedObject(SaveAreaSize, getXbox360ArgOffset(CCInfo),
+                                /*IsImmutable=*/false, /*IsAliased=*/true);
       SDValue FIN = DAG.getFrameIndex(VarArgsFrameIndex, PtrVT);
 
       for (unsigned I = FirstUnallocated; I != std::size(GPArgRegs); ++I) {
@@ -4527,6 +4587,18 @@ SDValue PPCTargetLowering::LowerFormalArguments_32SVR4(
       SDValue PtrOff = DAG.getConstant(MVT(MVT::f64).getSizeInBits()/8, dl,
                                          PtrVT);
       FIN = DAG.getNode(ISD::ADD, dl, PtrOff.getValueType(), FIN, PtrOff);
+    }
+  }
+
+  // An Xbox 360 function returns its hidden result pointer in r3.
+  if (Subtarget.isXbox360()) {
+    for (unsigned I = 0, E = Ins.size(); I != E; ++I) {
+      if (!Ins[I].Flags.isSRet())
+        continue;
+      Register Reg = MF.getRegInfo().createVirtualRegister(&PPC::GPRCRegClass);
+      FuncInfo->setSRetReturnReg(Reg);
+      MemOps.push_back(DAG.getCopyToReg(Chain, dl, Reg, InVals[I]));
+      break;
     }
   }
 
@@ -6094,8 +6166,9 @@ SDValue PPCTargetLowering::LowerCall_32SVR4(
         return !isSupportedXbox360Argument(Arg.Flags, Arg.OrigTy);
       }))
     report_fatal_error(
-        "only integer and pointer arguments are supported by the xbox360 "
-        "feature\n",
+        "unsupported xbox360 argument type; supported types are integers up "
+        "to 128 bits, pointers, fixed f16/f32/f64, variadic f64, and nonempty "
+        "fixed byval aggregates\n",
         false);
 
   // Mark this function as potentially containing a function that contains a
@@ -6160,12 +6233,14 @@ SDValue PPCTargetLowering::LowerCall_32SVR4(
   // Reserve stack space for the allocations in CCInfo.
   CCByValInfo.AllocateStack(CCInfo.getStackSize(), PtrAlign);
 
-  CCByValInfo.AnalyzeCallOperands(Outs, CC_PPC32_SVR4_ByVal);
-
-  // Size of the linkage area, parameter list area and the part of the local
-  // space variable where copies of aggregates which are passed by value are
-  // stored.
-  unsigned NumBytes = CCByValInfo.getStackSize();
+  unsigned NumBytes;
+  if (Subtarget.isXbox360()) {
+    NumBytes = CCInfo.getStackSize();
+  } else {
+    CCByValInfo.AnalyzeCallOperands(Outs, CC_PPC32_SVR4_ByVal);
+    // Include local copies of aggregates passed by value.
+    NumBytes = CCByValInfo.getStackSize();
+  }
 
   // Calculate by how many bytes the stack has to be adjusted in case of tail
   // call optimization.
@@ -6193,14 +6268,88 @@ SDValue PPCTargetLowering::LowerCall_32SVR4(
   bool seenFloatArg = false;
   // Walk the register/memloc assignments, inserting copies/loads.
   // i - Tracks the index into the list of registers allocated for the call
-  // RealArgIdx - Tracks the index into the list of actual function arguments
   // j - Tracks the index into the list of byval arguments
-  for (unsigned i = 0, RealArgIdx = 0, j = 0, e = ArgLocs.size();
-       i != e;
-       ++i, ++RealArgIdx) {
+  for (unsigned i = 0, j = 0, e = ArgLocs.size(); i != e; ++i) {
     CCValAssign &VA = ArgLocs[i];
+    unsigned RealArgIdx = VA.getValNo();
     SDValue Arg = OutVals[RealArgIdx];
     ISD::ArgFlagsTy Flags = Outs[RealArgIdx].Flags;
+
+    if (Subtarget.isXbox360() && Flags.isByVal()) {
+      unsigned ValNo = VA.getValNo();
+      unsigned ByValSize = Flags.getByValSize();
+      // A 1, 2 or 4-byte aggregate is right-justified like an integer.
+      unsigned Justify = ByValSize == 1 || ByValSize == 2 || ByValSize == 4
+                             ? 8 - ByValSize
+                             : 0;
+      auto GetLoad = [&](MVT MemoryVT, unsigned LoadOffset) {
+        SDValue Address = LoadOffset == 0
+                              ? Arg
+                              : DAG.getObjectPtrOffset(
+                                    dl, Arg, TypeSize::getFixed(LoadOffset));
+        return DAG.getExtLoad(
+            ISD::ZEXTLOAD, dl, MVT::i64, Chain, Address, MachinePointerInfo(),
+            MemoryVT,
+            commonAlignment(Flags.getNonZeroByValAlign(), LoadOffset));
+      };
+      unsigned LoadOffset = 0;
+
+      while (i != e && ArgLocs[i].getValNo() == ValNo &&
+             ArgLocs[i].isRegLoc() && LoadOffset + 8 <= ByValSize) {
+        SDValue Load = GetLoad(MVT::i64, LoadOffset);
+        MemOpChains.push_back(Load.getValue(1));
+        RegsToPass.push_back({ArgLocs[i].getLocReg(), Load});
+        LoadOffset += 8;
+        ++i;
+      }
+
+      if (i != e && ArgLocs[i].getValNo() == ValNo && ArgLocs[i].isRegLoc()) {
+        unsigned ResidueBytes = ByValSize - LoadOffset;
+        SDValue ResidueVal;
+        for (unsigned Bytes = 0; Bytes != ResidueBytes;) {
+          unsigned N = llvm::bit_floor(ResidueBytes - Bytes);
+          MVT MemoryVT =
+              N == 1 ? MVT::i8
+                     : (N == 2 ? MVT::i16 : (N == 4 ? MVT::i32 : MVT::i64));
+          SDValue Load = GetLoad(MemoryVT, LoadOffset);
+          MemOpChains.push_back(Load.getValue(1));
+          LoadOffset += N;
+          Bytes += N;
+
+          unsigned ShiftBits = 64 - Bytes * 8 - Justify * 8;
+          SDValue Shift = DAG.getNode(
+              ISD::SHL, dl, MVT::i64, Load,
+              DAG.getConstant(ShiftBits, dl,
+                              getShiftAmountTy(MVT::i64, DAG.getDataLayout())));
+          ResidueVal =
+              ResidueVal ? DAG.getNode(ISD::OR, dl, MVT::i64, ResidueVal, Shift)
+                         : Shift;
+        }
+        RegsToPass.push_back({ArgLocs[i].getLocReg(), ResidueVal});
+        ++i;
+      }
+
+      if (LoadOffset != ByValSize) {
+        assert(i != e && ArgLocs[i].getValNo() == ValNo &&
+               ArgLocs[i].isMemLoc() && "missing xbox360 byval stack location");
+        ISD::ArgFlagsTy MemcpyFlags = Flags;
+        MemcpyFlags.setByValSize(ByValSize - LoadOffset);
+        SDValue Source = LoadOffset == 0
+                             ? Arg
+                             : DAG.getObjectPtrOffset(
+                                   dl, Arg, TypeSize::getFixed(LoadOffset));
+        SDValue Destination = DAG.getObjectPtrOffset(
+            dl, StackPtr,
+            TypeSize::getFixed(ArgLocs[i].getLocMemOffset() + Justify));
+        Chain = CallSeqStart = createMemcpyOutsideCallSeq(
+            Source, Destination, CallSeqStart, MemcpyFlags, DAG, dl);
+        ++i;
+      }
+
+      assert(i != 0 && "xbox360 byval argument has no locations");
+      --i;
+      continue;
+    }
 
     if (Flags.isByVal()) {
       // Argument is an aggregate which is passed by value, thus we need to
@@ -6245,6 +6394,9 @@ SDValue PPCTargetLowering::LowerCall_32SVR4(
     if (Arg.getValueType() == MVT::i1)
       Arg = DAG.getNode(Flags.isSExt() ? ISD::SIGN_EXTEND : ISD::ZERO_EXTEND,
                         dl, MVT::i32, Arg);
+
+    if (VA.getLocInfo() == CCValAssign::BCvt)
+      Arg = DAG.getNode(ISD::BITCAST, dl, VA.getLocVT(), Arg);
 
     if (VA.isRegLoc()) {
       seenFloatArg |= VA.getLocVT().isFloatingPoint();
@@ -7993,6 +8145,20 @@ PPCTargetLowering::CanLowerReturn(CallingConv::ID CallConv,
                                   const SmallVectorImpl<ISD::OutputArg> &Outs,
                                   LLVMContext &Context,
                                   const Type *RetTy) const {
+  if (Subtarget.isXbox360() && RetTy) {
+    if (RetTy->isFloatingPointTy() && !RetTy->isHalfTy() &&
+        !RetTy->isFloatTy() && !RetTy->isDoubleTy())
+      report_fatal_error(
+          "unsupported xbox360 return type; floating-point returns must be "
+          "f16, f32, or f64\n",
+          false);
+    if (const auto *IntTy = dyn_cast<IntegerType>(RetTy);
+        IntTy && IntTy->getBitWidth() > 128)
+      report_fatal_error("unsupported xbox360 return type; integer returns "
+                         "wider than 128 bits are not supported\n",
+                         false);
+  }
+
   SmallVector<CCValAssign, 16> RVLocs;
   CCState CCInfo(CallConv, isVarArg, MF, RVLocs, Context);
   return CCInfo.CheckReturn(
@@ -8055,6 +8221,15 @@ PPCTargetLowering::LowerReturn(SDValue Chain, CallingConv::ID CallConv,
       Chain = DAG.getCopyToReg(Chain, dl, VA.getLocReg(), Arg, Glue);
     Glue = Chain.getValue(1);
     RetOps.push_back(DAG.getRegister(VA.getLocReg(), VA.getLocVT()));
+  }
+
+  if (Register SRetReg = DAG.getMachineFunction()
+                             .getInfo<PPCFunctionInfo>()
+                             ->getSRetReturnReg()) {
+    SDValue Val = DAG.getCopyFromReg(Chain, dl, SRetReg, MVT::i32);
+    Chain = DAG.getCopyToReg(Chain, dl, PPC::R3, Val, Glue);
+    Glue = Chain.getValue(1);
+    RetOps.push_back(DAG.getRegister(PPC::R3, MVT::i32));
   }
 
   RetOps[0] = Chain;  // Update chain.
