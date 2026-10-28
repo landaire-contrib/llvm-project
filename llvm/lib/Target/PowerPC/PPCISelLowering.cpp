@@ -14642,7 +14642,8 @@ bool PPCTargetLowering::hasInlineStackProbe(const MachineFunction &MF) const {
   if (MF.getFunction().hasFnAttribute("probe-stack"))
     return MF.getFunction().getFnAttribute("probe-stack").getValueAsString() ==
            "inline-asm";
-  return false;
+  // The Xbox 360 guards each thread stack with a single 4 KiB page.
+  return Subtarget.isXbox360();
 }
 
 unsigned PPCTargetLowering::getStackProbeSize(const MachineFunction &MF) const {

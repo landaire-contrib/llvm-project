@@ -14,11 +14,11 @@ define i32 @asm_memory_operand(ptr %p) {
 ; The frame exceeds the 16-bit displacement range, so local stack slot
 ; allocation materializes a frame base register.
 ; CHECK-LABEL: large_frame_copy:
-; CHECK:       stwux 1, 1, 0
-; CHECK:       add [[BASE:[0-9]+]], 1, [[BASE]]
-; CHECK:       ld [[WORD:[0-9]+]], 24([[BASE]])
-; CHECK:       std [[WORD]], 24(3)
-; CHECK:       lwz 1, 0(1)
+; CHECK:       stwu %r0, -4096(%r1)
+; CHECK:       add [[BASE:%r[0-9]+]], %r1, [[BASE]]
+; CHECK:       ld [[WORD:%r[0-9]+]], 24([[BASE]])
+; CHECK:       std [[WORD]], 24(%r3)
+; CHECK:       lwz %r1, 0(%r1)
 ; CHECK:       blr
 define void @large_frame_copy(ptr align 8 %dst) {
   %small = alloca [32 x i8], align 8
@@ -31,8 +31,8 @@ define void @large_frame_copy(ptr align 8 %dst) {
 
 ; A probed dynamic allocation keeps the stack pointer updates 32 bits wide.
 ; CHECK-LABEL: probed_alloca:
-; CHECK:       stwux 3, 1, 5
-; CHECK:       stwu 3, -4096(1)
+; CHECK:       stwux %r3, %r1, %r5
+; CHECK:       stwu %r3, -4096(%r1)
 ; CHECK:       blr
 define void @probed_alloca(i32 %n) "probe-stack"="inline-asm" {
   %p = alloca i8, i32 %n, align 16
