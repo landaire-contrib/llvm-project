@@ -93,10 +93,12 @@ extern cl::opt<bool> EnableAutoPairedVecSt;
 static unsigned offsetMinAlignForOpcode(unsigned OpC);
 
 PPCRegisterInfo::PPCRegisterInfo(const PPCTargetMachine &TM)
-  : PPCGenRegisterInfo(TM.isPPC64() ? PPC::LR8 : PPC::LR,
-                       TM.isPPC64() ? 0 : 1,
-                       TM.isPPC64() ? 0 : 1),
-    TM(TM) {
+    : PPCGenRegisterInfo(PPC::has64BitAddresses(TM.getTargetTriple())
+                             ? PPC::LR8
+                             : PPC::LR,
+                         PPC::has64BitAddresses(TM.getTargetTriple()) ? 0 : 1,
+                         PPC::has64BitAddresses(TM.getTargetTriple()) ? 0 : 1),
+      TM(TM) {
   ImmToIdxMap[PPC::LD]   = PPC::LDX;    ImmToIdxMap[PPC::STD]  = PPC::STDX;
   ImmToIdxMap[PPC::LBZ]  = PPC::LBZX;   ImmToIdxMap[PPC::STB]  = PPC::STBX;
   ImmToIdxMap[PPC::LHZ]  = PPC::LHZX;   ImmToIdxMap[PPC::LHA]  = PPC::LHAX;
@@ -190,6 +192,13 @@ PPCRegisterInfo::getCalleeSavedRegs(const MachineFunction *MF) const {
   // clobbers the TOC.
   bool SaveR2 = MF->getRegInfo().isAllocatable(PPC::X2) &&
                 !Subtarget.isUsingPCRelativeCalls();
+
+  // The Xbox 360 preserves r14-r31, f14-f31 and cr2-cr4. Its nonvolatile
+  // vector registers are v64-v127, which are not modelled.
+  if (Subtarget.isXbox360())
+    return MF->getFunction().getCallingConv() == CallingConv::Cold
+               ? CSR_SVR64_ColdCC_SaveList
+               : CSR_PPC64_SaveList;
 
   // Cold calling convention CSRs.
   if (MF->getFunction().getCallingConv() == CallingConv::Cold) {
@@ -289,6 +298,10 @@ PPCRegisterInfo::getCallPreservedMask(const MachineFunction &MF,
                                : CSR_AIX32_RegMask);
   }
 
+  if (Subtarget.isXbox360())
+    return CC == CallingConv::Cold ? CSR_SVR64_ColdCC_RegMask
+                                   : CSR_PPC64_RegMask;
+
   if (CC == CallingConv::Cold) {
     if (TM.isPPC64())
       return Subtarget.pairedVectorMemops()
@@ -369,7 +382,7 @@ BitVector PPCRegisterInfo::getReservedRegs(const MachineFunction &MF) const {
     // no constant-pool loads, etc.) and we have no potential uses inside an
     // inline asm block, then we can treat r2 has an ordinary callee-saved
     // register.
-    if (!TM.isPPC64() || UsesTOCBasePtr || MF.hasInlineAsm())
+    if (!Subtarget.usesPPC64ABI() || UsesTOCBasePtr || MF.hasInlineAsm())
       markSuperRegs(Reserved, PPC::R2); // System-reserved register.
 
     if (Subtarget.isSVR4ABI())
@@ -727,7 +740,7 @@ void PPCRegisterInfo::lowerDynamicAlloc(MachineBasicBlock::iterator II) const {
   // Get the instruction info.
   const TargetInstrInfo &TII = *Subtarget.getInstrInfo();
   // Determine whether 64-bit pointers are used.
-  bool LP64 = TM.isPPC64();
+  bool LP64 = Subtarget.has64BitAddresses();
   DebugLoc dl = MI.getDebugLoc();
 
   // Get the maximum call stack size.
@@ -787,7 +800,7 @@ void PPCRegisterInfo::prepareDynamicAlloca(MachineBasicBlock::iterator II,
   // Get the instruction info.
   const TargetInstrInfo &TII = *Subtarget.getInstrInfo();
   // Determine whether 64-bit pointers are used.
-  bool LP64 = TM.isPPC64();
+  bool LP64 = Subtarget.has64BitAddresses();
   DebugLoc dl = MI.getDebugLoc();
   // Get the total frame size.
   unsigned FrameSize = MFI.getStackSize();
@@ -873,7 +886,7 @@ void PPCRegisterInfo::lowerPrepareProbedAlloca(
   // Get the instruction info.
   const TargetInstrInfo &TII = *Subtarget.getInstrInfo();
   // Determine whether 64-bit pointers are used.
-  bool LP64 = TM.isPPC64();
+  bool LP64 = Subtarget.has64BitAddresses();
   DebugLoc dl = MI.getDebugLoc();
   Register FramePointer = MI.getOperand(0).getReg();
   const Register ActualNegSizeReg = MI.getOperand(1).getReg();
@@ -918,7 +931,7 @@ void PPCRegisterInfo::lowerDynamicAreaOffset(
   const TargetInstrInfo &TII = *Subtarget.getInstrInfo();
 
   unsigned maxCallFrameSize = MFI.getMaxCallFrameSize();
-  bool is64Bit = TM.isPPC64();
+  bool is64Bit = Subtarget.has64BitAddresses();
   DebugLoc dl = MI.getDebugLoc();
   BuildMI(MBB, II, dl, TII.get(is64Bit ? PPC::LI8 : PPC::LI),
           MI.getOperand(0).getReg())
@@ -1832,7 +1845,7 @@ PPCRegisterInfo::eliminateFrameIndex(MachineBasicBlock::iterator II,
     // Pick a volatile register and if we are spilling/restoring that
     // particular one, pick the next one.
     SRegHi = SReg = is64Bit ? PPC::X4 : PPC::R4;
-    if (MI.getOperand(0).getReg() == SReg)
+    if (regsOverlap(MI.getOperand(0).getReg(), SReg))
       SRegHi = SReg = SReg + 1;
     VSReg = MF.getRegInfo().createVirtualRegister(&PPC::VSFRCRegClass);
     BuildMI(MBB, II, dl, TII.get(is64Bit ? PPC::MTVSRD : PPC::MTVSRWZ), VSReg)
@@ -1878,7 +1891,14 @@ PPCRegisterInfo::eliminateFrameIndex(MachineBasicBlock::iterator II,
 
   Register StackReg = MI.getOperand(FIOperandNum).getReg();
   MI.getOperand(OperandBase).ChangeToRegister(StackReg, false);
-  MI.getOperand(OperandBase + 1).ChangeToRegister(SReg, false, false, true);
+  MachineOperand &OffsetRegOp = MI.getOperand(OperandBase + 1);
+  OffsetRegOp.ChangeToRegister(SReg, false, false, true);
+  if (Subtarget.isXbox360()) {
+    if (SReg.isPhysical())
+      OffsetRegOp.setReg(getSubReg(SReg, PPC::sub_32));
+    else
+      OffsetRegOp.setSubReg(PPC::sub_32);
+  }
 
   // If we stashed a value from a GPR into a VSR, we need to get it back after
   // spilling the register.
@@ -1905,7 +1925,7 @@ PPCRegisterInfo::eliminateFrameIndex(MachineBasicBlock::iterator II,
 Register PPCRegisterInfo::getFrameRegister(const MachineFunction &MF) const {
   const PPCFrameLowering *TFI = getFrameLowering(MF);
 
-  if (!TM.isPPC64())
+  if (!MF.getSubtarget<PPCSubtarget>().has64BitAddresses())
     return TFI->hasFP(MF) ? PPC::R31 : PPC::R1;
   else
     return TFI->hasFP(MF) ? PPC::X31 : PPC::X1;
@@ -1916,7 +1936,7 @@ Register PPCRegisterInfo::getBaseRegister(const MachineFunction &MF) const {
   if (!hasBasePointer(MF))
     return getFrameRegister(MF);
 
-  if (TM.isPPC64())
+  if (Subtarget.has64BitAddresses())
     return PPC::X30;
 
   if (Subtarget.isSVR4ABI() && TM.isPositionIndependent())
@@ -1989,14 +2009,16 @@ needsFrameBaseReg(MachineInstr *MI, int64_t Offset) const {
 Register PPCRegisterInfo::materializeFrameBaseRegister(MachineBasicBlock *MBB,
                                                        int FrameIdx,
                                                        int64_t Offset) const {
-  unsigned ADDriOpc = TM.isPPC64() ? PPC::ADDI8 : PPC::ADDI;
+  const MachineFunction &MF = *MBB->getParent();
+  unsigned ADDriOpc =
+      MF.getSubtarget<PPCSubtarget>().has64BitAddresses() ? PPC::ADDI8
+                                                          : PPC::ADDI;
 
   MachineBasicBlock::iterator Ins = MBB->begin();
   DebugLoc DL;                  // Defaults to "unknown"
   if (Ins != MBB->end())
     DL = Ins->getDebugLoc();
 
-  const MachineFunction &MF = *MBB->getParent();
   const PPCSubtarget &Subtarget = MF.getSubtarget<PPCSubtarget>();
   const TargetInstrInfo &TII = *Subtarget.getInstrInfo();
   const MCInstrDesc &MCID = TII.get(ADDriOpc);

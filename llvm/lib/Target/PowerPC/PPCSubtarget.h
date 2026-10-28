@@ -228,6 +228,12 @@ public:
   }
 
   bool is64BitELFABI() const { return isSVR4ABI() && usesPPC64ABI(); }
+
+  /// The 32-bit SVR4 calling convention, including Xbox's 64-bit ISA variant.
+  /// This describes ABI width, not pointer width (e.g. PPC64ILP32 on Lv2).
+  bool uses32BitSVR4ABI() const { return isSVR4ABI() && !usesPPC64ABI(); }
+
+  /// True PPC32 SVR4 only; CR spills and shrink wrapping depend on ISA width.
   bool is32BitELFABI() const { return isSVR4ABI() && !isPPC64(); }
   bool isUsingPCRelativeCalls() const;
 

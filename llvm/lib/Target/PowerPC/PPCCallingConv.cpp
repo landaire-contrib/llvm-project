@@ -62,6 +62,17 @@ static bool CC_PPC32_SVR4_Custom_Dummy(unsigned &ValNo, MVT &ValVT, MVT &LocVT,
   return true;
 }
 
+static bool CC_Xbox360_AssignStackSlot(unsigned &ValNo, MVT &ValVT, MVT &LocVT,
+                                       CCValAssign::LocInfo &LocInfo,
+                                       ISD::ArgFlagsTy &ArgFlags,
+                                       CCState &State) {
+  unsigned Offset = State.AllocateStack(8, Align(8));
+  if (LocVT == MVT::i32)
+    Offset += 4;
+  State.addLoc(CCValAssign::getMem(ValNo, ValVT, Offset, LocVT, LocInfo));
+  return true;
+}
+
 static bool CC_PPC32_SVR4_Custom_AlignArgRegs(unsigned &ValNo, MVT &ValVT,
                                               MVT &LocVT,
                                               CCValAssign::LocInfo &LocInfo,

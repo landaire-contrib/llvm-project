@@ -46,8 +46,8 @@ def RetCC_PPC_Cold : CallingConv<[
   // Use the same return registers as RetCC_PPC, but limited to only
   // one return value. The remaining return values will be saved to
   // the stack.
-  CCIfType<[i32, i1], CCIfSubtarget<"isPPC64()", CCPromoteToType<i64>>>,
-  CCIfType<[i1], CCIfNotSubtarget<"isPPC64()", CCPromoteToType<i32>>>,
+  CCIfType<[i32, i1], CCIfSubtarget<"usesPPC64ABI()", CCPromoteToType<i64>>>,
+  CCIfType<[i1], CCIfNotSubtarget<"usesPPC64ABI()", CCPromoteToType<i32>>>,
 
   CCIfType<[i32], CCAssignToReg<[R3]>>,
   CCIfType<[i64], CCAssignToReg<[X3]>>,
@@ -67,9 +67,9 @@ let Entry = 1 in
 def RetCC_PPC : CallingConv<[
   CCIfCC<"CallingConv::AnyReg", CCDelegateTo<RetCC_PPC64_AnyReg>>,
 
-  // On PPC64, integer return values are always promoted to i64
-  CCIfType<[i32, i1], CCIfSubtarget<"isPPC64()", CCPromoteToType<i64>>>,
-  CCIfType<[i1], CCIfNotSubtarget<"isPPC64()", CCPromoteToType<i32>>>,
+  // PPC64 ABIs other than Xbox promote integer return values to i64.
+  CCIfType<[i32, i1], CCIfSubtarget<"usesPPC64ABI()", CCPromoteToType<i64>>>,
+  CCIfType<[i1], CCIfNotSubtarget<"usesPPC64ABI()", CCPromoteToType<i32>>>,
 
   CCIfType<[i32], CCAssignToReg<[R3, R4, R5, R6, R7, R8, R9, R10]>>,
   CCIfType<[i64], CCAssignToReg<[X3, X4, X5, X6]>>,
@@ -195,6 +195,10 @@ def RetCC_PPC64_ELF_FIS : CallingConv<[
 def CC_PPC32_SVR4_Common : CallingConv<[
   CCIfType<[i1], CCPromoteToType<i32>>,
 
+  CCIfType<[i64],
+           CCIfSubtarget<"isXbox360()",
+                         CCAssignToReg<[X3, X4, X5, X6, X7, X8, X9, X10]>>>,
+
   // The ABI requires i64 to be passed in two adjacent registers with the first
   // register having an odd register number.
   CCIfType<[i32],
@@ -232,6 +236,11 @@ def CC_PPC32_SVR4_Common : CallingConv<[
   CCIfType<[f32],
            CCIfSubtarget<"hasSPE()",
                          CCAssignToReg<[R3, R4, R5, R6, R7, R8, R9, R10]>>>,
+
+  // Xbox integer arguments use right-justified 8-byte stack slots.
+  CCIfType<[i32, i64],
+           CCIfSubtarget<"isXbox360()",
+                         CCCustom<"CC_Xbox360_AssignStackSlot">>>,
 
   // Split arguments have an alignment of 8 bytes on the stack.
   CCIfType<[i32], CCIfSplit<CCAssignToStack<4, 8>>>,

@@ -663,7 +663,7 @@ PPCTargetLowering::PPCTargetLowering(const PPCTargetMachine &TM,
     setOperationAction(ISD::VAARG, MVT::i32, Promote);
     AddPromotedToType(ISD::VAARG, MVT::i32, MVT::i64);
     setOperationAction(ISD::VAARG, MVT::Other, Expand);
-  } else if (Subtarget.is32BitELFABI()) {
+  } else if (Subtarget.uses32BitSVR4ABI()) {
     // VAARG is custom lowered with the 32-bit SVR4 ABI.
     setOperationAction(ISD::VAARG, MVT::Other, Custom);
     setOperationAction(ISD::VAARG, MVT::i64, Custom);
@@ -671,7 +671,7 @@ PPCTargetLowering::PPCTargetLowering(const PPCTargetMachine &TM,
     setOperationAction(ISD::VAARG, MVT::Other, Expand);
 
   // VACOPY is custom lowered with the 32-bit SVR4 ABI.
-  if (Subtarget.is32BitELFABI())
+  if (Subtarget.uses32BitSVR4ABI())
     setOperationAction(ISD::VACOPY            , MVT::Other, Custom);
   else
     setOperationAction(ISD::VACOPY            , MVT::Other, Expand);
@@ -2759,7 +2759,8 @@ bool PPCTargetLowering::SelectAddressRegImm(
     if (isIntS16Immediate(CN, Imm) &&
         (!EncodingAlignment || isAligned(*EncodingAlignment, Imm))) {
       Disp = DAG.getTargetConstant(Imm, dl, CN->getValueType(0));
-      Base = DAG.getRegister(Subtarget.isPPC64() ? PPC::ZERO8 : PPC::ZERO,
+      Base = DAG.getRegister(CN->getValueType(0) == MVT::i64 ? PPC::ZERO8
+                                                             : PPC::ZERO,
                              CN->getValueType(0));
       return true;
     }
@@ -2866,7 +2867,7 @@ bool PPCTargetLowering::SelectAddressRegRegOnly(SDValue N, SDValue &Base,
   }
 
   // Otherwise, do it the hard way, using R0 as the base register.
-  Base = DAG.getRegister(Subtarget.isPPC64() ? PPC::ZERO8 : PPC::ZERO,
+  Base = DAG.getRegister(N.getValueType() == MVT::i64 ? PPC::ZERO8 : PPC::ZERO,
                          N.getValueType());
   Index = N;
   return true;
@@ -3071,7 +3072,7 @@ static void setUsesTOCBasePtr(SelectionDAG &DAG) {
 SDValue PPCTargetLowering::getTOCEntry(SelectionDAG &DAG, const SDLoc &dl,
                                        SDValue GA) const {
   EVT VT = Subtarget.getScalarIntVT();
-  SDValue Reg = Subtarget.isPPC64() ? DAG.getRegister(PPC::X2, VT)
+  SDValue Reg = Subtarget.usesPPC64ABI() ? DAG.getRegister(PPC::X2, VT)
                 : Subtarget.isAIXABI()
                     ? DAG.getRegister(PPC::R2, VT)
                     : DAG.getNode(PPCISD::GlobalBaseReg, dl, VT);
@@ -3455,7 +3456,7 @@ SDValue PPCTargetLowering::LowerGlobalTLSAddressLinux(SDValue Op,
   SDLoc dl(GA);
   const GlobalValue *GV = GA->getGlobal();
   EVT PtrVT = getPointerTy(DAG.getDataLayout());
-  bool is64bit = Subtarget.isPPC64();
+  bool is64bit = Subtarget.usesPPC64ABI();
   const Module *M = DAG.getMachineFunction().getFunction().getParent();
   PICLevel::Level picLevel = M->getPICLevel();
 
@@ -4188,6 +4189,15 @@ static unsigned EnsureStackAlignment(const PPCFrameLowering *Lowering,
   return alignTo(NumBytes, Lowering->getStackAlign());
 }
 
+static bool isSupportedXbox360Argument(const ISD::ArgFlagsTy &Flags,
+                                       const Type *OrigTy) {
+  if (Flags.isByVal())
+    return false;
+  if (const auto *IntTy = dyn_cast_or_null<IntegerType>(OrigTy))
+    return IntTy->getBitWidth() <= 64;
+  return OrigTy && OrigTy->isPointerTy();
+}
+
 SDValue PPCTargetLowering::LowerFormalArguments(
     SDValue Chain, CallingConv::ID CallConv, bool isVarArg,
     const SmallVectorImpl<ISD::InputArg> &Ins, const SDLoc &dl,
@@ -4198,7 +4208,7 @@ SDValue PPCTargetLowering::LowerFormalArguments(
   if (Subtarget.is64BitELFABI())
     return LowerFormalArguments_64SVR4(Chain, CallConv, isVarArg, Ins, dl, DAG,
                                        InVals);
-  assert(Subtarget.is32BitELFABI());
+  assert(Subtarget.uses32BitSVR4ABI());
   return LowerFormalArguments_32SVR4(Chain, CallConv, isVarArg, Ins, dl, DAG,
                                      InVals);
 }
@@ -4247,14 +4257,30 @@ SDValue PPCTargetLowering::LowerFormalArguments_32SVR4(
                        (CallConv == CallingConv::Fast));
   const Align PtrAlign(4);
 
+  if (Subtarget.isXbox360() && any_of(Ins, [](const ISD::InputArg &Arg) {
+        return !isSupportedXbox360Argument(Arg.Flags, Arg.OrigTy);
+      }))
+    report_fatal_error(
+        "only integer and pointer arguments are supported by the xbox360 "
+        "feature\n",
+        false);
+
+  if (Subtarget.isXbox360() && isVarArg)
+    report_fatal_error(
+        "variadic function definitions are not yet supported by the xbox360 "
+        "feature\n",
+        false);
+
   // Assign locations to all of the incoming arguments.
   SmallVector<CCValAssign, 16> ArgLocs;
   CCState CCInfo(CallConv, isVarArg, DAG.getMachineFunction(), ArgLocs,
                  *DAG.getContext());
 
-  // Reserve space for the linkage area on the stack.
+  // The Xbox 360 caller reserves eight 8-byte argument slots after linkage.
   unsigned LinkageSize = Subtarget.getFrameLowering()->getLinkageSize();
-  CCInfo.AllocateStack(LinkageSize, PtrAlign);
+  unsigned MinParameterArea = Subtarget.isXbox360() ? 64 : 0;
+  CCInfo.AllocateStack(LinkageSize + MinParameterArea,
+                       Subtarget.isXbox360() ? Align(8) : PtrAlign);
   CCInfo.AnalyzeFormalArguments(Ins, CC_PPC32_SVR4);
 
   for (unsigned i = 0, e = ArgLocs.size(); i != e; ++i) {
@@ -4271,6 +4297,9 @@ SDValue PPCTargetLowering::LowerFormalArguments_32SVR4(
         case MVT::i1:
         case MVT::i32:
           RC = &PPC::GPRCRegClass;
+          break;
+        case MVT::i64:
+          RC = &PPC::G8RCRegClass;
           break;
         case MVT::f32:
           if (Subtarget.hasP8Vector())
@@ -4356,7 +4385,7 @@ SDValue PPCTargetLowering::LowerFormalArguments_32SVR4(
 
   // Area that is at least reserved in the caller of this function.
   unsigned MinReservedArea = CCByValInfo.getStackSize();
-  MinReservedArea = std::max(MinReservedArea, LinkageSize);
+  MinReservedArea = std::max(MinReservedArea, LinkageSize + MinParameterArea);
 
   // Set the size that is at least reserved in caller of this function.  Tail
   // call optimized function's reserved stack space needs to be aligned so that
@@ -5192,7 +5221,7 @@ static SDValue EmitTailCallStoreFPAndRetAddr(SelectionDAG &DAG, SDValue Chain,
     MachineFunction &MF = DAG.getMachineFunction();
     const PPCSubtarget &Subtarget = MF.getSubtarget<PPCSubtarget>();
     const PPCFrameLowering *FL = Subtarget.getFrameLowering();
-    int SlotSize = Subtarget.isPPC64() ? 8 : 4;
+    int SlotSize = Subtarget.has64BitAddresses() ? 8 : 4;
     int NewRetAddrLoc = SPDiff + FL->getReturnSaveOffset();
     int NewRetAddr = MF.getFrameInfo().CreateFixedObject(SlotSize,
                                                          NewRetAddrLoc, true);
@@ -5750,7 +5779,7 @@ buildCallOperands(SmallVectorImpl<SDValue> &Ops,
 
   // If this is a tail call add stack pointer delta.
   if (CFlags.IsTailCall)
-    Ops.push_back(DAG.getConstant(SPDiff, dl, MVT::i32));
+    Ops.push_back(DAG.getSignedConstant(SPDiff, dl, MVT::i32));
 
   // Add argument registers to the end of the list so that they are known live
   // into the call.
@@ -5889,7 +5918,7 @@ bool PPCTargetLowering::isEligibleForTCO(
   if (Subtarget.useLongCalls() && !(CB && CB->isMustTailCall()))
     return false;
 
-  if (Subtarget.isSVR4ABI() && Subtarget.isPPC64())
+  if (Subtarget.is64BitELFABI())
     return IsEligibleForTailCallOptimization_64SVR4(
         CalleeGV, CalleeCC, CallerCC, CB, isVarArg, Outs, Ins, CallerFunc,
         isCalleeExternalSymbol);
@@ -5969,7 +5998,7 @@ PPCTargetLowering::LowerCall(TargetLowering::CallLoweringInfo &CLI,
                          InVals, CB);
 
   assert(Subtarget.isSVR4ABI());
-  if (Subtarget.isPPC64())
+  if (Subtarget.usesPPC64ABI())
     return LowerCall_64SVR4(Chain, Callee, CFlags, Outs, OutVals, Ins, dl, DAG,
                             InVals, CB);
   return LowerCall_32SVR4(Chain, Callee, CFlags, Outs, OutVals, Ins, dl, DAG,
@@ -5998,6 +6027,14 @@ SDValue PPCTargetLowering::LowerCall_32SVR4(
 
   MachineFunction &MF = DAG.getMachineFunction();
 
+  if (Subtarget.isXbox360() && any_of(Outs, [](const ISD::OutputArg &Arg) {
+        return !isSupportedXbox360Argument(Arg.Flags, Arg.OrigTy);
+      }))
+    report_fatal_error(
+        "only integer and pointer arguments are supported by the xbox360 "
+        "feature\n",
+        false);
+
   // Mark this function as potentially containing a function that contains a
   // tail call. As a consequence the frame pointer will be used for dynamicalloc
   // and restoring the callers stack pointer in this functions epilog. This is
@@ -6015,9 +6052,11 @@ SDValue PPCTargetLowering::LowerCall_32SVR4(
   SmallVector<CCValAssign, 16> ArgLocs;
   CCState CCInfo(CallConv, IsVarArg, MF, ArgLocs, *DAG.getContext());
 
-  // Reserve space for the linkage area on the stack.
-  CCInfo.AllocateStack(Subtarget.getFrameLowering()->getLinkageSize(),
-                       PtrAlign);
+  // The Xbox 360 caller reserves eight 8-byte argument slots after linkage.
+  unsigned LinkageSize = Subtarget.getFrameLowering()->getLinkageSize();
+  unsigned MinParameterArea = Subtarget.isXbox360() ? 64 : 0;
+  CCInfo.AllocateStack(LinkageSize + MinParameterArea,
+                       Subtarget.isXbox360() ? Align(8) : PtrAlign);
 
   if (IsVarArg) {
     // Handle fixed and variable vector arguments differently.
@@ -6029,6 +6068,7 @@ SDValue PPCTargetLowering::LowerCall_32SVR4(
       MVT ArgVT = Outs[i].VT;
       ISD::ArgFlagsTy ArgFlags = Outs[i].Flags;
       bool Result;
+      size_t FirstArgLoc = ArgLocs.size();
 
       if (!ArgFlags.isVarArg()) {
         Result = CC_PPC32_SVR4(i, ArgVT, ArgVT, CCValAssign::Full, ArgFlags,
@@ -6036,6 +6076,15 @@ SDValue PPCTargetLowering::LowerCall_32SVR4(
       } else {
         Result = CC_PPC32_SVR4_VarArg(i, ArgVT, ArgVT, CCValAssign::Full,
                                       ArgFlags, Outs[i].OrigTy, CCInfo);
+      }
+
+      if (Subtarget.isXbox360() && ArgFlags.isVarArg()) {
+        for (const CCValAssign &VA : ArrayRef(ArgLocs).drop_front(FirstArgLoc))
+          if (VA.isMemLoc())
+            report_fatal_error(
+                "stack-passed variadic arguments are not yet supported by the "
+                "xbox360 feature\n",
+                false);
       }
 
       if (Result) {
@@ -11670,12 +11719,15 @@ SDValue PPCTargetLowering::LowerINTRINSIC_VOID(SDValue Op,
       // ordering?
       Val = DAG.getNode(ISD::TRUNCATE, DL, MVT::i64, Val);
     }
-    unsigned Opcode = Subtarget.isPPC64() ? PPC::CFENCE8 : PPC::CFENCE;
+    // The fence compares the loaded value with itself, so it must be at least
+    // as wide as the value.
+    MVT FenceVT =
+        Ty.getSizeInBits() > 32 ? MVT::i64 : Subtarget.getScalarIntVT();
+    unsigned Opcode = FenceVT == MVT::i64 ? PPC::CFENCE8 : PPC::CFENCE;
     return SDValue(
-        DAG.getMachineNode(
-            Opcode, DL, MVT::Other,
-            DAG.getNode(ISD::ANY_EXTEND, DL, Subtarget.getScalarIntVT(), Val),
-            Op.getOperand(0)),
+        DAG.getMachineNode(Opcode, DL, MVT::Other,
+                           DAG.getNode(ISD::ANY_EXTEND, DL, FenceVT, Val),
+                           Op.getOperand(0)),
         0);
   }
   case Intrinsic::ppc_disassemble_dmr: {
@@ -14024,7 +14076,7 @@ unsigned PPCTargetLowering::getStackProbeSize(const MachineFunction &MF) const {
 MachineBasicBlock *
 PPCTargetLowering::emitProbedAlloca(MachineInstr &MI,
                                     MachineBasicBlock *MBB) const {
-  const bool isPPC64 = Subtarget.isPPC64();
+  const bool isPPC64 = Subtarget.has64BitAddresses();
   MachineFunction *MF = MBB->getParent();
   const TargetInstrInfo *TII = Subtarget.getInstrInfo();
   DebugLoc DL = MI.getDebugLoc();
@@ -19304,9 +19356,9 @@ SDValue PPCTargetLowering::LowerRETURNADDR(SDValue Op,
     SDValue FrameAddr =
         DAG.getLoad(Op.getValueType(), dl, DAG.getEntryNode(),
                     LowerFRAMEADDR(Op, DAG), MachinePointerInfo());
-    SDValue Offset =
-        DAG.getConstant(Subtarget.getFrameLowering()->getReturnSaveOffset(), dl,
-                        Subtarget.getScalarIntVT());
+    SDValue Offset = DAG.getSignedConstant(
+        Subtarget.getFrameLowering()->getReturnSaveOffset(), dl,
+        Subtarget.getScalarIntVT());
     return DAG.getLoad(PtrVT, dl, DAG.getEntryNode(),
                        DAG.getNode(ISD::ADD, dl, PtrVT, FrameAddr, Offset),
                        MachinePointerInfo());
@@ -20804,7 +20856,7 @@ PPC::AddrMode PPCTargetLowering::SelectForceXFormMode(SDValue N, SDValue &Disp,
   }
 
   // Otherwise, use R0 as the base register.
-  Disp = DAG.getRegister(Subtarget.isPPC64() ? PPC::ZERO8 : PPC::ZERO,
+  Disp = DAG.getRegister(N.getValueType() == MVT::i64 ? PPC::ZERO8 : PPC::ZERO,
                          N.getValueType());
   Base = N;
 
@@ -21024,7 +21076,7 @@ PPC::AddrMode PPCTargetLowering::SelectOptimalAddrMode(const SDNode *Parent,
       int16_t Imm;
       if (isIntS16Immediate(CN, Imm) && (!Align || isAligned(*Align, Imm))) {
         Disp = DAG.getSignedTargetConstant(Imm, DL, CNType);
-        Base = DAG.getRegister(Subtarget.isPPC64() ? PPC::ZERO8 : PPC::ZERO,
+        Base = DAG.getRegister(CNType == MVT::i64 ? PPC::ZERO8 : PPC::ZERO,
                                CNType);
         break;
       }
@@ -21080,7 +21132,8 @@ PPC::AddrMode PPCTargetLowering::SelectOptimalAddrMode(const SDNode *Parent,
     // When a frame index is not aligned, we also match by XForm.
     FrameIndexSDNode *FI = dyn_cast<FrameIndexSDNode>(N);
     Base = FI ? N : N.getOperand(1);
-    Disp = FI ? DAG.getRegister(Subtarget.isPPC64() ? PPC::ZERO8 : PPC::ZERO,
+    Disp = FI ? DAG.getRegister(N.getValueType() == MVT::i64 ? PPC::ZERO8
+                                                             : PPC::ZERO,
                                 N.getValueType())
               : N.getOperand(0);
     break;

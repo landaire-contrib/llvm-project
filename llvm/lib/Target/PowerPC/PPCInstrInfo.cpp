@@ -101,8 +101,10 @@ PPCInstrInfo::PPCInstrInfo(const PPCSubtarget &STI)
 
 const TargetRegisterClass *PPCInstrInfo::getInlineAsmMemoryOperandRegClass(
     InlineAsm::ConstraintCode C) const {
-  return Subtarget.isPPC64() ? &PPC::G8RC_NOX0RegClass
-                             : &PPC::GPRC_NOR0RegClass;
+  // The Xbox 360 keeps 32-bit pointers in 64-bit registers. This must agree
+  // with the ptr_rc register classes selected by HwMode.
+  return Subtarget.has64BitAddresses() ? &PPC::G8RC_NOX0RegClass
+                                       : &PPC::GPRC_NOR0RegClass;
 }
 
 /// CreateTargetHazardRecognizer - Return the hazard recognizer to use for
@@ -3330,7 +3332,7 @@ bool PPCInstrInfo::expandPostRAPseudo(MachineInstr &MI) const {
   case PPC::CFENCE:
   case PPC::CFENCE8: {
     auto Val = MI.getOperand(0).getReg();
-    unsigned CmpOp = Subtarget.isPPC64() ? PPC::CMPD : PPC::CMPW;
+    unsigned CmpOp = MI.getOpcode() == PPC::CFENCE8 ? PPC::CMPD : PPC::CMPW;
     BuildMI(MBB, MI, DL, get(CmpOp), PPC::CR7).addReg(Val).addReg(Val);
     BuildMI(MBB, MI, DL, get(PPC::CTRL_DEP))
         .addImm(PPC::PRED_NE_MINUS)

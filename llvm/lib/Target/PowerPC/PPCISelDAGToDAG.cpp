@@ -2929,12 +2929,8 @@ class IntegerCompareEliminator {
   SDValue getSETCCInGPR(SDValue Compare, SetccInGPROpts ConvOpts);
 
 public:
-  IntegerCompareEliminator(SelectionDAG *DAG,
-                           PPCDAGToDAGISel *Sel) : CurDAG(DAG), S(Sel) {
-    assert(CurDAG->getTargetLoweringInfo()
-           .getPointerTy(CurDAG->getDataLayout()).getSizeInBits() == 64 &&
-           "Only expecting to use this on 64 bit targets.");
-  }
+  IntegerCompareEliminator(SelectionDAG *DAG, PPCDAGToDAGISel *Sel)
+      : CurDAG(DAG), S(Sel) {}
   SDNode *Select(SDNode *N) {
     if (CmpInGPR == ICGPR_None)
       return nullptr;
@@ -7471,10 +7467,18 @@ void PPCDAGToDAGISel::PeepholePPC64ZExt() {
       // of the wrong type). Once done, however, everything should be right
       // again.
 
+      const PPCInstrInfo *TII = Subtarget->getInstrInfo();
+      const MCInstrDesc &Desc = TII->get(NewOpcode);
       SmallVector<SDValue, 4> Ops;
-      for (const SDValue &V : PN->ops()) {
+      for (unsigned OpNo = 0, E = PN->getNumOperands(); OpNo != E; ++OpNo) {
+        SDValue V = PN->getOperand(OpNo);
+        // Pointer operands of the 64-bit instruction keep a 32-bit register
+        // class when pointers are 32 bits wide, as on the Xbox 360.
+        const TargetRegisterClass *RC =
+            TII->getRegClass(Desc, Desc.getNumDefs() + OpNo);
         if (!ToPromote.count(V.getNode()) && V.getValueType() == MVT::i32 &&
-            !isa<ConstantSDNode>(V)) {
+            !isa<ConstantSDNode>(V) && RC &&
+            Subtarget->getRegisterInfo()->getRegSizeInBits(*RC) == 64) {
           SDValue ReplOpOps[] = { ISR.getOperand(0), V, ISR.getOperand(2) };
           SDNode *ReplOp =
             CurDAG->getMachineNode(TargetOpcode::INSERT_SUBREG, SDLoc(V),

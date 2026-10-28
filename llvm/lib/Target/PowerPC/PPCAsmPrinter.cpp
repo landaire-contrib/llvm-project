@@ -1373,13 +1373,15 @@ void PPCAsmPrinter::emitInstruction(const MachineInstr *MI) {
     // Transform %xd = LDgotTprelL @sym, %xs
     LowerPPCMachineInstrToMCInst(MI, TmpInst, *this);
 
-    // Change the opcode to LD.
-    TmpInst.setOpcode(IsPPC64 ? PPC::LD : PPC::LWZ);
+    // Change the opcode to LD. The 32-bit pseudo loads a 32-bit GOT entry even
+    // on a 64-bit processor.
+    bool Is64BitLoad = MI->getOpcode() == PPC::LDgotTprelL;
+    TmpInst.setOpcode(Is64BitLoad ? PPC::LD : PPC::LWZ);
     const MachineOperand &MO = MI->getOperand(1);
     const GlobalValue *GValue = MO.getGlobal();
     MCSymbol *MOSymbol = getSymbol(GValue);
     const MCExpr *Exp = symbolWithSpecifier(
-        MOSymbol, IsPPC64 ? PPC::S_GOT_TPREL_LO : PPC::S_GOT_TPREL);
+        MOSymbol, Is64BitLoad ? PPC::S_GOT_TPREL_LO : PPC::S_GOT_TPREL);
     TmpInst.getOperand(1) = MCOperand::createExpr(Exp);
     EmitToStreamer(*OutStreamer, TmpInst);
     return;
