@@ -3739,7 +3739,34 @@ SDValue PPCTargetLowering::LowerVAARG(SDValue Op, SelectionDAG &DAG) const {
   const Value *SV = cast<SrcValueSDNode>(Node->getOperand(2))->getValue();
   SDLoc dl(Node);
 
-  assert(!Subtarget.isPPC64() && "LowerVAARG is PPC32 only");
+  assert(Subtarget.uses32BitSVR4ABI() &&
+         "LowerVAARG is only supported for PPC32 SVR4 and Xbox 360");
+
+  if (Subtarget.isXbox360()) {
+    if (VT != MVT::i32 && VT != MVT::i64)
+      report_fatal_error(
+          "only i32, pointer, and i64 va_arg types are supported by the "
+          "xbox360 feature\n",
+          false);
+
+    SDValue Cursor =
+        DAG.getLoad(PtrVT, dl, InChain, VAListPtr, MachinePointerInfo(SV));
+    InChain = Cursor.getValue(1);
+    SDValue AlignedCursor =
+        DAG.getNode(ISD::ADD, dl, PtrVT, Cursor, DAG.getConstant(7, dl, PtrVT));
+    AlignedCursor = DAG.getNode(ISD::AND, dl, PtrVT, AlignedCursor,
+                                DAG.getSignedConstant(-8, dl, PtrVT));
+    SDValue NextCursor = DAG.getNode(ISD::ADD, dl, PtrVT, AlignedCursor,
+                                     DAG.getConstant(8, dl, PtrVT));
+    SDValue ResultAddress = AlignedCursor;
+    if (VT == MVT::i32)
+      ResultAddress = DAG.getNode(ISD::ADD, dl, PtrVT, ResultAddress,
+                                  DAG.getConstant(4, dl, PtrVT));
+
+    InChain = DAG.getStore(InChain, dl, NextCursor, VAListPtr,
+                           MachinePointerInfo(SV));
+    return DAG.getLoad(VT, dl, InChain, ResultAddress, MachinePointerInfo());
+  }
 
   // gpr_index
   SDValue GprIndex = DAG.getExtLoad(ISD::ZEXTLOAD, dl, MVT::i32, InChain,
@@ -3830,7 +3857,15 @@ SDValue PPCTargetLowering::LowerVAARG(SDValue Op, SelectionDAG &DAG) const {
 }
 
 SDValue PPCTargetLowering::LowerVACOPY(SDValue Op, SelectionDAG &DAG) const {
-  assert(!Subtarget.isPPC64() && "LowerVACOPY is PPC32 only");
+  assert(Subtarget.uses32BitSVR4ABI() &&
+         "LowerVACOPY is only supported for PPC32 SVR4 and Xbox 360");
+
+  if (Subtarget.isXbox360())
+    return DAG.getMemcpy(Op.getOperand(0), Op, Op.getOperand(1),
+                         Op.getOperand(2),
+                         DAG.getConstant(4, SDLoc(Op), MVT::i32), Align(4),
+                         Align(4), false, true, /*CI=*/nullptr, std::nullopt,
+                         MachinePointerInfo(), MachinePointerInfo());
 
   // We have to copy the entire va_list struct:
   // 2*sizeof(char) + 2 Byte alignment + 2*sizeof(char*) = 12 Byte
@@ -4265,12 +4300,6 @@ SDValue PPCTargetLowering::LowerFormalArguments_32SVR4(
         "feature\n",
         false);
 
-  if (Subtarget.isXbox360() && isVarArg)
-    report_fatal_error(
-        "variadic function definitions are not yet supported by the xbox360 "
-        "feature\n",
-        false);
-
   // Assign locations to all of the incoming arguments.
   SmallVector<CCValAssign, 16> ArgLocs;
   CCState CCInfo(CallConv, isVarArg, DAG.getMachineFunction(), ArgLocs,
@@ -4399,7 +4428,40 @@ SDValue PPCTargetLowering::LowerFormalArguments_32SVR4(
 
   // If the function takes variable number of arguments, make a frame index for
   // the start of the first vararg value... for expansion of llvm.va_start.
-  if (isVarArg) {
+  if (isVarArg && Subtarget.isXbox360() && MFI.hasVAStart()) {
+    static const MCPhysReg GPArgRegs[] = {
+        PPC::X3, PPC::X4, PPC::X5, PPC::X6, PPC::X7, PPC::X8, PPC::X9, PPC::X10,
+    };
+    unsigned FirstUnallocated = CCInfo.getFirstUnallocated(GPArgRegs);
+    int VarArgsFrameIndex;
+
+    if (FirstUnallocated == std::size(GPArgRegs)) {
+      VarArgsFrameIndex = MFI.CreateFixedObject(
+          8, CCInfo.getStackSize(), /*IsImmutable=*/true, /*IsAliased=*/true);
+    } else {
+      unsigned SaveAreaSize = (std::size(GPArgRegs) - FirstUnallocated) * 8;
+      VarArgsFrameIndex = MFI.CreateFixedObject(
+          SaveAreaSize, LinkageSize + FirstUnallocated * 8,
+          /*IsImmutable=*/false, /*IsAliased=*/true);
+      SDValue FIN = DAG.getFrameIndex(VarArgsFrameIndex, PtrVT);
+
+      for (unsigned I = FirstUnallocated; I != std::size(GPArgRegs); ++I) {
+        Register VReg = MF.getRegInfo().getLiveInVirtReg(GPArgRegs[I]);
+        if (!VReg)
+          VReg = MF.addLiveIn(GPArgRegs[I], &PPC::G8RCRegClass);
+
+        SDValue Val = DAG.getCopyFromReg(Chain, dl, VReg, MVT::i64);
+        MachinePointerInfo MPI = MachinePointerInfo::getFixedStack(
+            MF, VarArgsFrameIndex, (I - FirstUnallocated) * 8);
+        MemOps.push_back(DAG.getStore(Val.getValue(1), dl, Val, FIN, MPI));
+        FIN = DAG.getNode(ISD::ADD, dl, PtrVT, FIN,
+                          DAG.getConstant(8, dl, PtrVT));
+      }
+    }
+    FuncInfo->setVarArgsFrameIndex(VarArgsFrameIndex);
+  }
+
+  if (isVarArg && !Subtarget.isXbox360()) {
     static const MCPhysReg GPArgRegs[] = {
       PPC::R3, PPC::R4, PPC::R5, PPC::R6,
       PPC::R7, PPC::R8, PPC::R9, PPC::R10,
@@ -5793,7 +5855,8 @@ buildCallOperands(SmallVectorImpl<SDValue> &Ops,
        !CFlags.IsPatchPoint && !Subtarget.isUsingPCRelativeCalls())
     Ops.push_back(DAG.getRegister(Subtarget.getTOCPointerRegister(), RegVT));
 
-  // Add implicit use of CR bit 6 for 32-bit SVR4 vararg calls
+  // Add implicit use of CR bit 6 for 32-bit SVR4 vararg calls. The Xbox ABI
+  // does not use this marker.
   if (CFlags.IsVarArg && Subtarget.is32BitELFABI())
     Ops.push_back(DAG.getRegister(PPC::CR1EQ, MVT::i32));
 
@@ -6068,7 +6131,6 @@ SDValue PPCTargetLowering::LowerCall_32SVR4(
       MVT ArgVT = Outs[i].VT;
       ISD::ArgFlagsTy ArgFlags = Outs[i].Flags;
       bool Result;
-      size_t FirstArgLoc = ArgLocs.size();
 
       if (!ArgFlags.isVarArg()) {
         Result = CC_PPC32_SVR4(i, ArgVT, ArgVT, CCValAssign::Full, ArgFlags,
@@ -6076,15 +6138,6 @@ SDValue PPCTargetLowering::LowerCall_32SVR4(
       } else {
         Result = CC_PPC32_SVR4_VarArg(i, ArgVT, ArgVT, CCValAssign::Full,
                                       ArgFlags, Outs[i].OrigTy, CCInfo);
-      }
-
-      if (Subtarget.isXbox360() && ArgFlags.isVarArg()) {
-        for (const CCValAssign &VA : ArrayRef(ArgLocs).drop_front(FirstArgLoc))
-          if (VA.isMemLoc())
-            report_fatal_error(
-                "stack-passed variadic arguments are not yet supported by the "
-                "xbox360 feature\n",
-                false);
       }
 
       if (Result) {
@@ -6240,7 +6293,7 @@ SDValue PPCTargetLowering::LowerCall_32SVR4(
 
   // Set CR bit 6 to true if this is a vararg call with floating args passed in
   // registers.
-  if (IsVarArg) {
+  if (IsVarArg && !Subtarget.isXbox360()) {
     SDVTList VTs = DAG.getVTList(MVT::Other, MVT::Glue);
     SDValue Ops[] = { Chain, InGlue };
 
