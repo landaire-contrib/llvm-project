@@ -1227,7 +1227,7 @@ static bool isSignedCharDefault(const llvm::Triple &Triple) {
 
   case llvm::Triple::ppc:
   case llvm::Triple::ppc64:
-    if (Triple.isOSDarwin())
+    if (Triple.isOSDarwin() || Triple.getOS() == llvm::Triple::Xbox360)
       return true;
     return false;
 
