@@ -596,6 +596,8 @@ createAIXTargetCodeGenInfo(CodeGenModule &CGM, bool Is64Bit);
 
 std::unique_ptr<TargetCodeGenInfo>
 createPPC32TargetCodeGenInfo(CodeGenModule &CGM, bool SoftFloatABI);
+std::unique_ptr<TargetCodeGenInfo>
+createXbox360TargetCodeGenInfo(CodeGenModule &CGM);
 
 std::unique_ptr<TargetCodeGenInfo>
 createPPC64TargetCodeGenInfo(CodeGenModule &CGM);

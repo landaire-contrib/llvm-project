@@ -653,6 +653,43 @@ PPC32TargetCodeGenInfo::initDwarfEHRegSizeTable(CodeGen::CodeGenFunction &CGF,
 // PowerPC-64
 
 namespace {
+class Xbox360ABIInfo : public DefaultABIInfo {
+public:
+  explicit Xbox360ABIInfo(CodeGen::CodeGenTypes &CGT) : DefaultABIInfo(CGT) {}
+
+  ABIArgInfo classifyReturnType(QualType RetTy) const;
+  ABIArgInfo classifyArgumentType(QualType Ty) const;
+
+  void computeInfo(CGFunctionInfo &FI) const override {
+    if (!getCXXABI().classifyReturnType(FI))
+      FI.getReturnInfo() = classifyReturnType(FI.getReturnType());
+    for (auto &I : FI.arguments())
+      I.info = classifyArgumentType(I.type);
+  }
+
+  RValue EmitVAArg(CodeGenFunction &CGF, Address VAListAddr, QualType Ty,
+                   AggValueSlot Slot) const override;
+
+private:
+  bool isNarrowInteger(QualType Ty) const;
+  llvm::IntegerType *getSmallAggregateType(uint64_t Size) const;
+};
+
+class Xbox360TargetCodeGenInfo : public TargetCodeGenInfo {
+public:
+  explicit Xbox360TargetCodeGenInfo(CodeGenTypes &CGT)
+      : TargetCodeGenInfo(std::make_unique<Xbox360ABIInfo>(CGT)) {}
+
+  int getDwarfEHStackPointer(CodeGen::CodeGenModule &) const override {
+    return 1;
+  }
+
+  bool initDwarfEHRegSizeTable(CodeGen::CodeGenFunction &CGF,
+                               llvm::Value *Address) const override {
+    return PPC_initDwarfEHRegSizeTable(CGF, Address, /*Is64Bit=*/true,
+                                       /*IsAIX=*/false);
+  }
+};
 
 /// PPC64_SVR4_ABIInfo - The 64-bit PowerPC ELF (SVR4) ABI information.
 class PPC64_SVR4_ABIInfo : public ABIInfo {
@@ -734,6 +771,85 @@ public:
   bool initDwarfEHRegSizeTable(CodeGen::CodeGenFunction &CGF,
                                llvm::Value *Address) const override;
 };
+} // namespace
+// The console compiler defines only the declared bits of signed and unsigned
+// char and short arguments and returns; both sides re-extend them. bool is
+// always passed as a clean 0 or 1.
+bool Xbox360ABIInfo::isNarrowInteger(QualType Ty) const {
+  if (const auto *ED = Ty->getAsEnumDecl())
+    Ty = ED->getIntegerType();
+  return !Ty->isBooleanType() && isPromotableIntegerTypeForABI(Ty);
+}
+
+ABIArgInfo Xbox360ABIInfo::classifyArgumentType(QualType Ty) const {
+  Ty = useFirstFieldIfTransparentUnion(Ty);
+
+  if (isNarrowInteger(Ty))
+    return ABIArgInfo::getDirect();
+
+  if (isAggregateTypeForABI(Ty)) {
+    if (CGCXXABI::RecordArgABI RAA = getRecordArgABI(Ty, getCXXABI()))
+      return getNaturalAlignIndirect(Ty, getDataLayout().getAllocaAddrSpace(),
+                                     RAA == CGCXXABI::RAA_DirectInMemory);
+    uint64_t Size = getContext().getTypeSize(Ty);
+    if (Size == 0)
+      return ABIArgInfo::getIgnore();
+    if (Size <= 64)
+      return ABIArgInfo::getDirect(getSmallAggregateType(Size));
+    return getNaturalAlignIndirect(Ty, getDataLayout().getAllocaAddrSpace(),
+                                   /*ByVal=*/true);
+  }
+
+  return DefaultABIInfo::classifyArgumentType(Ty);
+}
+
+ABIArgInfo Xbox360ABIInfo::classifyReturnType(QualType RetTy) const {
+  if (isNarrowInteger(RetTy))
+    return ABIArgInfo::getDirect();
+  if (!isAggregateTypeForABI(RetTy))
+    return DefaultABIInfo::classifyReturnType(RetTy);
+
+  uint64_t Size = getContext().getTypeSize(RetTy);
+  if (Size == 0)
+    return ABIArgInfo::getIgnore();
+  if (Size == 8 || Size == 16 || Size == 32 || Size == 64)
+    return ABIArgInfo::getDirect(getSmallAggregateType(Size));
+  return getNaturalAlignIndirect(RetTy, getDataLayout().getAllocaAddrSpace());
+}
+
+RValue Xbox360ABIInfo::EmitVAArg(CodeGenFunction &CGF, Address VAListAddr,
+                                 QualType Ty, AggValueSlot Slot) const {
+  // Aggregates up to 8 bytes occupy one slot with their register image.
+  if (isAggregateTypeForABI(Ty)) {
+    uint64_t Size = getContext().getTypeSize(Ty);
+    if (Size == 0 || Size > 64) {
+      CGF.CGM.ErrorUnsupported(CGF.CurFuncDecl, "xbox360 variadic aggregate");
+      return DefaultABIInfo::EmitVAArg(CGF, VAListAddr, Ty, Slot);
+    }
+    llvm::IntegerType *ArgTy = getSmallAggregateType(Size);
+    llvm::Type *SlotTy = ArgTy->getBitWidth() == 64 ? CGF.Int64Ty : CGF.Int32Ty;
+    llvm::Value *Val =
+        CGF.Builder.CreateVAArg(VAListAddr.emitRawPointer(CGF), SlotTy);
+    Val = CGF.Builder.CreateTrunc(Val, ArgTy);
+    CharUnits TempAlign =
+        std::max(getContext().getTypeAlignInChars(Ty),
+                 CharUnits::fromQuantity(
+                     getDataLayout().getABITypeAlign(ArgTy).value()));
+    Address Temp = CGF.CreateTempAlloca(ArgTy, TempAlign, "va.agg");
+    CGF.Builder.CreateStore(Val, Temp);
+    return CGF.EmitLoadOfAnyValue(
+        CGF.MakeAddrLValue(Temp.withElementType(CGF.ConvertTypeForMem(Ty)), Ty),
+        Slot);
+  }
+  return DefaultABIInfo::EmitVAArg(CGF, VAListAddr, Ty, Slot);
+}
+
+// Aggregates of 1, 2 or 4 bytes are passed and returned like integers of that
+// size, right-justified. Other sizes up to 8 bytes are left-justified.
+llvm::IntegerType *Xbox360ABIInfo::getSmallAggregateType(uint64_t Size) const {
+  if (Size == 8 || Size == 16 || Size == 32)
+    return llvm::IntegerType::get(getVMContext(), Size);
+  return llvm::Type::getInt64Ty(getVMContext());
 }
 
 // Return true if the ABI requires Ty to be passed sign- or zero-
@@ -1076,6 +1192,10 @@ CodeGen::createPPC32TargetCodeGenInfo(CodeGenModule &CGM, bool SoftFloatABI) {
 std::unique_ptr<TargetCodeGenInfo>
 CodeGen::createPPC64TargetCodeGenInfo(CodeGenModule &CGM) {
   return std::make_unique<PPC64TargetCodeGenInfo>(CGM.getTypes());
+}
+std::unique_ptr<TargetCodeGenInfo>
+CodeGen::createXbox360TargetCodeGenInfo(CodeGenModule &CGM) {
+  return std::make_unique<Xbox360TargetCodeGenInfo>(CGM.getTypes());
 }
 
 std::unique_ptr<TargetCodeGenInfo> CodeGen::createPPC64_SVR4_TargetCodeGenInfo(

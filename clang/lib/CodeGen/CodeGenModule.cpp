@@ -203,6 +203,9 @@ createTargetCodeGenInfo(CodeGenModule &CGM) {
     return createPPC32TargetCodeGenInfo(CGM, IsSoftFloat);
   }
   case llvm::Triple::ppc64:
+    if (Triple.getOS() == llvm::Triple::Xbox360)
+      return createXbox360TargetCodeGenInfo(CGM);
+
     if (Triple.isOSAIX())
       return createAIXTargetCodeGenInfo(CGM, /*Is64Bit=*/true);
 
