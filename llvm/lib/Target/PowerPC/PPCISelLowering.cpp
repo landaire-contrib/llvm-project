@@ -19641,6 +19641,18 @@ EVT PPCTargetLowering::getOptimalMemOpType(
     }
   }
 
+  // The console compiler never widens a copy past its known alignment;
+  // misaligned accesses raise alignment exceptions in write-combined memory.
+  if (Subtarget.isXbox360()) {
+    if (Op.isAligned(Align(8)))
+      return MVT::i64;
+    if (Op.isAligned(Align(4)))
+      return MVT::i32;
+    if (Op.isAligned(Align(2)))
+      return MVT::i16;
+    return MVT::i8;
+  }
+
   if (Subtarget.isPPC64()) {
     return MVT::i64;
   }
@@ -19711,7 +19723,8 @@ bool PPCTargetLowering::isLegalAddImmediate(int64_t Imm) const {
   return isInt<16>(Imm) || isUInt<16>(Imm);
 }
 
-bool PPCTargetLowering::allowsMisalignedMemoryAccesses(EVT VT, unsigned, Align,
+bool PPCTargetLowering::allowsMisalignedMemoryAccesses(EVT VT, unsigned,
+                                                       Align Alignment,
                                                        MachineMemOperand::Flags,
                                                        unsigned *Fast) const {
   if (!EnablePPCUnaligned)
@@ -19725,6 +19738,17 @@ bool PPCTargetLowering::allowsMisalignedMemoryAccesses(EVT VT, unsigned, Align,
 
   if (!VT.isSimple())
     return false;
+
+  // A misaligned access raises an alignment exception in write-combined
+  // memory, which titles use for GPU buffers. As the console compiler does,
+  // keep explicitly misaligned integer accesses legal but do not merge stores
+  // past their known alignment.
+  if (Subtarget.isXbox360() && VT.isScalarInteger() &&
+      Alignment.value() < VT.getStoreSize()) {
+    if (Fast)
+      *Fast = 0;
+    return true;
+  }
 
   if (VT.isFloatingPoint() && !VT.isVector() &&
       !Subtarget.allowsUnalignedFPAccess())
