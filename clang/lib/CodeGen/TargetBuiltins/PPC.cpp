@@ -247,7 +247,10 @@ Value *CodeGenFunction::EmitPPCBuiltinExpr(unsigned BuiltinID,
   case PPC::BI__builtin_vsx_lxvw4x_be:
   case PPC::BI__builtin_vsx_lxvl:
   case PPC::BI__builtin_vsx_lxvll:
-  {
+  case PPC::BI__builtin_vmx128_lvlx:
+  case PPC::BI__builtin_vmx128_lvrx:
+  case PPC::BI__builtin_vmx128_lvlxl:
+  case PPC::BI__builtin_vmx128_lvrxl: {
     SmallVector<Value *, 2> Ops;
     Ops.push_back(EmitScalarExpr(E->getArg(0)));
     Ops.push_back(EmitScalarExpr(E->getArg(1)));
@@ -298,6 +301,18 @@ Value *CodeGenFunction::EmitPPCBuiltinExpr(unsigned BuiltinID,
     case PPC::BI__builtin_vsx_lxvll:
       ID = Intrinsic::ppc_vsx_lxvll;
       break;
+    case PPC::BI__builtin_vmx128_lvlx:
+      ID = Intrinsic::ppc_vmx128_lvlx;
+      break;
+    case PPC::BI__builtin_vmx128_lvrx:
+      ID = Intrinsic::ppc_vmx128_lvrx;
+      break;
+    case PPC::BI__builtin_vmx128_lvlxl:
+      ID = Intrinsic::ppc_vmx128_lvlxl;
+      break;
+    case PPC::BI__builtin_vmx128_lvrxl:
+      ID = Intrinsic::ppc_vmx128_lvrxl;
+      break;
     }
     llvm::Function *F = CGM.getIntrinsic(ID);
     return Builder.CreateCall(F, Ops, "");
@@ -315,7 +330,10 @@ Value *CodeGenFunction::EmitPPCBuiltinExpr(unsigned BuiltinID,
   case PPC::BI__builtin_vsx_stxvw4x_be:
   case PPC::BI__builtin_vsx_stxvl:
   case PPC::BI__builtin_vsx_stxvll:
-  {
+  case PPC::BI__builtin_vmx128_stvlx:
+  case PPC::BI__builtin_vmx128_stvrx:
+  case PPC::BI__builtin_vmx128_stvlxl:
+  case PPC::BI__builtin_vmx128_stvrxl: {
     SmallVector<Value *, 3> Ops;
     Ops.push_back(EmitScalarExpr(E->getArg(0)));
     Ops.push_back(EmitScalarExpr(E->getArg(1)));
@@ -360,6 +378,18 @@ Value *CodeGenFunction::EmitPPCBuiltinExpr(unsigned BuiltinID,
       break;
     case PPC::BI__builtin_vsx_stxvll:
       ID = Intrinsic::ppc_vsx_stxvll;
+      break;
+    case PPC::BI__builtin_vmx128_stvlx:
+      ID = Intrinsic::ppc_vmx128_stvlx;
+      break;
+    case PPC::BI__builtin_vmx128_stvrx:
+      ID = Intrinsic::ppc_vmx128_stvrx;
+      break;
+    case PPC::BI__builtin_vmx128_stvlxl:
+      ID = Intrinsic::ppc_vmx128_stvlxl;
+      break;
+    case PPC::BI__builtin_vmx128_stvrxl:
+      ID = Intrinsic::ppc_vmx128_stvrxl;
       break;
     }
     llvm::Function *F = CGM.getIntrinsic(ID);
@@ -1038,6 +1068,26 @@ Value *CodeGenFunction::EmitPPCBuiltinExpr(unsigned BuiltinID,
     QualType BIRetType = E->getType();
     auto RetTy = ConvertType(BIRetType);
     return Builder.CreateBitCast(ShuffleCall, RetTy);
+  }
+
+  // Word moves on any 16-byte vector type, done on <4 x i32>.
+  case PPC::BI__builtin_vmx128_vpermwi:
+  case PPC::BI__builtin_vmx128_vrlimi: {
+    unsigned NumVecs = BuiltinID == PPC::BI__builtin_vmx128_vpermwi ? 1 : 2;
+    llvm::Type *V4I32Ty = llvm::FixedVectorType::get(Int32Ty, 4);
+    SmallVector<Value *, 4> Ops;
+    for (unsigned I = 0, N = E->getNumArgs(); I != N; ++I) {
+      if (I < NumVecs)
+        Ops.push_back(
+            Builder.CreateBitCast(EmitScalarExpr(E->getArg(I)), V4I32Ty));
+      else
+        Ops.push_back(Builder.getInt32(
+            E->getArg(I)->EvaluateKnownConstInt(getContext()).getZExtValue()));
+    }
+    ID = NumVecs == 1 ? Intrinsic::ppc_vmx128_vpermwi
+                      : Intrinsic::ppc_vmx128_vrlimi;
+    Value *Call = Builder.CreateCall(CGM.getIntrinsic(ID), Ops);
+    return Builder.CreateBitCast(Call, ConvertType(E->getType()));
   }
 
   case PPC::BI__builtin_pack_vector_int128: {

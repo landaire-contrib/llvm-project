@@ -244,6 +244,19 @@ bool SemaPPC::CheckPPCBuiltinFunctionCall(const TargetInfo &TI,
   case PPC::BI__builtin_vsx_xxpermdi:
   case PPC::BI__builtin_vsx_xxsldwi:
     return BuiltinVSX(TheCall);
+  case PPC::BI__builtin_vmx128_vpermwi:
+    return BuiltinVMX128WordMove(TheCall, 2, 1) ||
+           SemaRef.BuiltinConstantArgRange(TheCall, 1, 0, 255);
+  case PPC::BI__builtin_vmx128_vrlimi:
+    return BuiltinVMX128WordMove(TheCall, 4, 2) ||
+           SemaRef.BuiltinConstantArgRange(TheCall, 2, 0, 15) ||
+           SemaRef.BuiltinConstantArgRange(TheCall, 3, 0, 3);
+  case PPC::BI__builtin_vmx128_vpkd3d:
+    return SemaRef.BuiltinConstantArgRange(TheCall, 2, 0, 6) ||
+           SemaRef.BuiltinConstantArgRange(TheCall, 3, 1, 3) ||
+           SemaRef.BuiltinConstantArgRange(TheCall, 4, 0, 3);
+  case PPC::BI__builtin_vmx128_vupkd3d:
+    return SemaRef.BuiltinConstantArgRange(TheCall, 1, 0, 6);
   case PPC::BI__builtin_unpack_vector_int128:
     return SemaRef.BuiltinConstantArgRange(TheCall, 1, 0, 1);
   case PPC::BI__builtin_altivec_vgnb:
@@ -606,6 +619,32 @@ bool SemaPPC::BuiltinVSX(CallExpr *TheCall) {
   // set. Otherwise it is _Bool by default.
   TheCall->setType(Arg1Ty);
 
+  return false;
+}
+
+bool SemaPPC::BuiltinVMX128WordMove(CallExpr *TheCall, unsigned NumArgs,
+                                    unsigned NumVecArgs) {
+  if (SemaRef.checkArgCount(TheCall, NumArgs))
+    return true;
+
+  ASTContext &Context = getASTContext();
+  QualType VecTy = TheCall->getArg(0)->getType();
+  for (unsigned I = 0; I != NumVecArgs; ++I) {
+    const Expr *Arg = TheCall->getArg(I);
+    QualType ArgTy = Arg->getType();
+    if (ArgTy->isDependentType() || VecTy->isDependentType())
+      continue;
+    if (!ArgTy->isVectorType() || Context.getTypeSize(ArgTy) != 128)
+      return Diag(Arg->getBeginLoc(), diag::err_ppc_invalid_arg_type)
+             << I + 1 << "16-byte vector" << Arg->getSourceRange();
+    if (!Context.hasSameUnqualifiedType(VecTy, ArgTy))
+      return Diag(Arg->getBeginLoc(), diag::err_vec_builtin_incompatible_vector)
+             << TheCall->getDirectCallee() << /*isMorethantwoArgs*/ false
+             << SourceRange(TheCall->getArg(0)->getBeginLoc(),
+                            Arg->getEndLoc());
+  }
+
+  TheCall->setType(VecTy);
   return false;
 }
 

@@ -777,6 +777,22 @@ TARGET_BUILTIN(__builtin_altivec_vrlqmi, "V1ULLLiV1ULLLiV1ULLLiV1ULLLi", "",
 TARGET_BUILTIN(__builtin_altivec_vrlqnm, "V1ULLLiV1ULLLiV1ULLLi", "",
                "power10-vector")
 
+// Xenon VMX128 built-ins. vpermwi and vrlimi take any 16-byte vector type.
+TARGET_BUILTIN(__builtin_vmx128_vmsum3fp, "V4fV4fV4f", "", "vmx128")
+TARGET_BUILTIN(__builtin_vmx128_vmsum4fp, "V4fV4fV4f", "", "vmx128")
+TARGET_BUILTIN(__builtin_vmx128_vpermwi, "v.", "t", "vmx128")
+TARGET_BUILTIN(__builtin_vmx128_vrlimi, "v.", "t", "vmx128")
+TARGET_BUILTIN(__builtin_vmx128_vpkd3d, "V4iV4iV4fIiIiIi", "", "vmx128")
+TARGET_BUILTIN(__builtin_vmx128_vupkd3d, "V4fV4iIi", "", "vmx128")
+TARGET_BUILTIN(__builtin_vmx128_lvlx, "V4iLivC*", "", "vmx128")
+TARGET_BUILTIN(__builtin_vmx128_lvrx, "V4iLivC*", "", "vmx128")
+TARGET_BUILTIN(__builtin_vmx128_lvlxl, "V4iLivC*", "", "vmx128")
+TARGET_BUILTIN(__builtin_vmx128_lvrxl, "V4iLivC*", "", "vmx128")
+TARGET_BUILTIN(__builtin_vmx128_stvlx, "vV4iLiv*", "", "vmx128")
+TARGET_BUILTIN(__builtin_vmx128_stvrx, "vV4iLiv*", "", "vmx128")
+TARGET_BUILTIN(__builtin_vmx128_stvlxl, "vV4iLiv*", "", "vmx128")
+TARGET_BUILTIN(__builtin_vmx128_stvrxl, "vV4iLiv*", "", "vmx128")
+
 // VSX built-ins.
 
 TARGET_BUILTIN(__builtin_vsx_lxvd2x, "V2dLivC*", "", "vsx")

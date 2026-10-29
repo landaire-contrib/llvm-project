@@ -57,6 +57,11 @@ public:
   // vector short vec_xxsldwi(vector short, vector short, int);
   bool BuiltinVSX(CallExpr *TheCall);
 
+  // Check the vector arguments of __builtin_vmx128_vpermwi/vrlimi: 16-byte
+  // vectors of one type, which is also the result type.
+  bool BuiltinVMX128WordMove(CallExpr *TheCall, unsigned NumArgs,
+                             unsigned NumVecArgs);
+
   bool checkTargetClonesAttr(const SmallVectorImpl<StringRef> &Params,
                              const SmallVectorImpl<SourceLocation> &Locs,
                              SmallVectorImpl<SmallString<64>> &NewParams,
