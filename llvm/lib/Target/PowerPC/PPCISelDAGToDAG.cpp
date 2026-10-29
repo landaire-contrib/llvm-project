@@ -4594,13 +4594,32 @@ bool PPCDAGToDAGISel::trySETCC(SDNode *N) {
     bool Swap, Negate;
     unsigned int VCmpInst =
         getVCmpInst(VecVT.getSimpleVT(), CC, Subtarget->hasVSX(), Swap, Negate);
+    if (Subtarget->hasVMX128()) {
+      switch (VCmpInst) {
+      case PPC::VCMPEQFP:
+        VCmpInst = PPC::VCMPEQFP128;
+        break;
+      case PPC::VCMPGEFP:
+        VCmpInst = PPC::VCMPGEFP128;
+        break;
+      case PPC::VCMPGTFP:
+        VCmpInst = PPC::VCMPGTFP128;
+        break;
+      case PPC::VCMPEQUW:
+        VCmpInst = PPC::VCMPEQUW128;
+        break;
+      }
+    }
     if (Swap)
       std::swap(LHS, RHS);
 
     EVT ResVT = VecVT.changeVectorElementTypeToInteger();
     if (Negate) {
       SDValue VCmp(CurDAG->getMachineNode(VCmpInst, dl, ResVT, LHS, RHS), 0);
-      CurDAG->SelectNodeTo(N, Subtarget->hasVSX() ? PPC::XXLNOR : PPC::VNOR,
+      CurDAG->SelectNodeTo(N,
+                           Subtarget->hasVSX()      ? PPC::XXLNOR
+                           : Subtarget->hasVMX128() ? PPC::VNOR128
+                                                    : PPC::VNOR,
                            ResVT, VCmp, VCmp);
       return true;
     }

@@ -404,14 +404,16 @@ def VRRC : PPCRegisterClassWithSize<[v16i8,v8i16,v4i32,v2i64,v1i128,v4f32,v2f64,
 
 // All vector registers VMX128 instructions can name: v0-v31 in VRRC order,
 // then v32-v63, then v127 down to v64 (the registers the Xbox 360 convention
-// preserves across calls). Until codegen handles v32-v127 the class is
-// untyped and not allocatable, so it takes no part in register allocation,
-// pressure sets, inline asm constraints or representative class choice.
-def VRRC128 : PPCRegisterClassWithSize<[untyped], 128,
+// preserves across calls). v32-v127 are reserved without vmx128.
+def VRRC128 : PPCRegisterClassWithSize<[v16i8,v8i16,v4i32,v2i64,v1i128,v4f32,
+                                        v2f64,f128], 128,
                 (add VRRC, (sequence "V%u", 32, 63),
-                     (sequence "V%u", 127, 64)), 128> {
-  let isAllocatable = 0;
-}
+                     (sequence "V%u", 127, 64)), 128>;
+
+// The permute control of vperm128.
+def VRRC0_7 : PPCRegisterClassWithSize<[v16i8,v8i16,v4i32,v2i64,v1i128,v4f32,
+                                        v2f64,f128], 128,
+                (add V2, V3, V4, V5, V0, V1, V6, V7), 128>;
 
 // VSX register classes (the allocation order mirrors that of the corresponding
 // subregister classes).
@@ -524,8 +526,9 @@ def PPCRegVRRC0_7AsmOperand : AsmOperandClass {
   let Name = "RegVRRC0_7";
   let PredicateMethod = "isVRRC0_7RegNumber";
 }
-def vrrc0_7 : RegisterOperand<VRRC> {
+def vrrc0_7 : RegisterOperand<VRRC0_7> {
   let ParserMatchClass = PPCRegVRRC0_7AsmOperand;
+  let DecoderMethod = "DecodeVRRCRegisterClass";
 }
 
 defm VSRC : PPCRegOperand<"isVSRegNumber">;

@@ -77,6 +77,9 @@ public:
   }
 
   const TargetRegisterClass *
+  getMinimalPhysRegClass(MCRegister Reg) const override;
+
+  const TargetRegisterClass *
   getCrossCopyRegClass(const TargetRegisterClass *RC) const override;
 
   unsigned getRegPressureLimit(const TargetRegisterClass *RC,

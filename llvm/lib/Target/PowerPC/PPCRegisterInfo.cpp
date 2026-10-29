@@ -193,12 +193,14 @@ PPCRegisterInfo::getCalleeSavedRegs(const MachineFunction *MF) const {
   bool SaveR2 = MF->getRegInfo().isAllocatable(PPC::X2) &&
                 !Subtarget.isUsingPCRelativeCalls();
 
-  // The Xbox 360 preserves r14-r31, f14-f31 and cr2-cr4. Its nonvolatile
-  // vector registers are v64-v127, which are not modelled.
-  if (Subtarget.isXbox360())
-    return MF->getFunction().getCallingConv() == CallingConv::Cold
-               ? CSR_SVR64_ColdCC_SaveList
-               : CSR_PPC64_SaveList;
+  // The Xbox 360 preserves r14-r31, f14-f31 and cr2-cr4, and v64-v127 when
+  // VMX128 is enabled.
+  if (Subtarget.isXbox360()) {
+    if (MF->getFunction().getCallingConv() == CallingConv::Cold)
+      return CSR_SVR64_ColdCC_SaveList;
+    return Subtarget.hasVMX128() ? CSR_Xbox360_VMX128_SaveList
+                                 : CSR_PPC64_SaveList;
+  }
 
   // Cold calling convention CSRs.
   if (MF->getFunction().getCallingConv() == CallingConv::Cold) {
@@ -298,9 +300,12 @@ PPCRegisterInfo::getCallPreservedMask(const MachineFunction &MF,
                                : CSR_AIX32_RegMask);
   }
 
-  if (Subtarget.isXbox360())
-    return CC == CallingConv::Cold ? CSR_SVR64_ColdCC_RegMask
-                                   : CSR_PPC64_RegMask;
+  if (Subtarget.isXbox360()) {
+    if (CC == CallingConv::Cold)
+      return CSR_SVR64_ColdCC_RegMask;
+    return Subtarget.hasVMX128() ? CSR_Xbox360_VMX128_RegMask
+                                 : CSR_PPC64_RegMask;
+  }
 
   if (CC == CallingConv::Cold) {
     if (TM.isPPC64())
@@ -411,6 +416,11 @@ BitVector PPCRegisterInfo::getReservedRegs(const MachineFunction &MF) const {
   if (!Subtarget.hasAltivec())
     for (MCRegister Reg : PPC::VRRCRegClass)
       markSuperRegs(Reserved, Reg);
+
+  if (!Subtarget.hasVMX128())
+    for (MCRegister Reg : PPC::VRRC128RegClass)
+      if (!PPC::VRRCRegClass.contains(Reg))
+        markSuperRegs(Reserved, Reg);
 
   if (Subtarget.isAIXABI() && Subtarget.hasAltivec() &&
       !Subtarget.isAIXExtendedAltivecABI()) {
@@ -619,6 +629,19 @@ bool PPCRegisterInfo::getRegAllocationHints(
 }
 
 const TargetRegisterClass *
+PPCRegisterInfo::getMinimalPhysRegClass(MCRegister Reg) const {
+  const TargetRegisterClass *RC =
+      PPCGenRegisterInfo::getMinimalPhysRegClass(Reg);
+  // VRRC0_7 only constrains the vperm128 control operand. Keep the minimal
+  // classes v0-v7 and their pairs had before it existed.
+  if (RC == &PPC::VRRC0_7RegClass)
+    return &PPC::VRRC_with_sub_64_in_SPILLTOVSRRCRegClass;
+  if (RC == &PPC::VSRpRC_with_sub_vsx0_in_VRRC0_7RegClass)
+    return &PPC::VSRpRC_with_sub_64_in_SPILLTOVSRRC_and_VFRCRegClass;
+  return RC;
+}
+
+const TargetRegisterClass *
 PPCRegisterInfo::getCrossCopyRegClass(const TargetRegisterClass *RC) const {
   if (RC == &PPC::CARRYRCRegClass)
     return TM.isPPC64() ? &PPC::G8RCRegClass : &PPC::GPRCRegClass;
@@ -654,6 +677,8 @@ unsigned PPCRegisterInfo::getRegPressureLimit(const TargetRegisterClass *RC,
       return 20 - DefaultSafety;
   }
     return 32 - DefaultSafety;
+  case PPC::VRRC128RegClassID:
+    return 128 - DefaultSafety;
   case PPC::VSFRCRegClassID:
   case PPC::VSSRCRegClassID:
   case PPC::VSRCRegClassID: {
@@ -673,6 +698,9 @@ const TargetRegisterClass *
 PPCRegisterInfo::getLargestLegalSuperClass(const TargetRegisterClass *RC,
                                            const MachineFunction &MF) const {
   const PPCSubtarget &Subtarget = MF.getSubtarget<PPCSubtarget>();
+  // Classic AltiVec values may move to v32-v127 between their uses.
+  if (Subtarget.hasVMX128() && PPC::VRRC128RegClass.hasSubClassEq(RC))
+    return &PPC::VRRC128RegClass;
   const auto *DefaultSuperclass =
       TargetRegisterInfo::getLargestLegalSuperClass(RC, MF);
   if (Subtarget.hasVSX()) {

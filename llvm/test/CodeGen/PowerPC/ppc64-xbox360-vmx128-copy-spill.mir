@@ -1,0 +1,56 @@
+# RUN: llc -mtriple=powerpc64-unknown-xbox360-ilp32 -mattr=+altivec,+vmx128 \
+# RUN:   -run-pass=post-ra-pseudos -verify-machineinstrs -o - %s \
+# RUN:   | FileCheck %s --check-prefix=COPY
+# RUN: llc -mtriple=powerpc64-unknown-xbox360-ilp32 -mattr=+altivec,+vmx128 \
+# RUN:   -run-pass=prolog-epilog -verify-machineinstrs -o - %s \
+# RUN:   | FileCheck %s --check-prefix=FRAME
+
+# Copies between v0-v31 use vor; copies involving v32-v127 use vor128.
+# COPY-LABEL: name: copies
+# COPY:       $v3 = VOR $v2, $v2
+# COPY-NEXT:  $v41 = VOR128 $v40, $v40
+# COPY-NEXT:  $v4 = VOR128 $v40, $v40
+# COPY-NEXT:  $v127 = VOR128 $v2, $v2
+---
+name: copies
+tracksRegLiveness: true
+body: |
+  bb.0:
+    liveins: $v2, $v40
+    $v3 = COPY $v2
+    $v41 = COPY $v40
+    $v4 = COPY $v40
+    $v127 = COPY $v2
+    BLR8 implicit $lr8, implicit $rm, implicit $v3, implicit $v41, implicit $v4, implicit $v127
+...
+
+# stvx128 and lvx128 are indexed only: frame index elimination puts the offset
+# in a register, built with lis/ori when it does not fit in 16 bits.
+# FRAME-LABEL: name: far_slot
+# FRAME:       $x3 = LI8 16
+# FRAME-NEXT:  STVX128 killed $v40, $r1, $r3 :: (store (s128) into %stack.1)
+# FRAME-NEXT:  $x3 = LIS8 0
+# FRAME-NEXT:  $x3 = ORI8 killed $x3, 40048
+# FRAME-NEXT:  STVX128 killed $v60, $r1, $r3 :: (store (s128) into %fixed-stack.0)
+# FRAME-NEXT:  $x3 = LI8 16
+# FRAME-NEXT:  $v41 = LVX128 $r1, $r3 :: (load (s128) from %stack.1)
+# FRAME-NEXT:  $x3 = LIS8 0
+# FRAME-NEXT:  $x3 = ORI8 killed $x3, 40048
+# FRAME-NEXT:  $v61 = LVX128 $r1, $r3 :: (load (s128) from %fixed-stack.0)
+---
+name: far_slot
+tracksRegLiveness: true
+fixedStack:
+  - { id: 0, offset: 16, size: 16, alignment: 16 }
+stack:
+  - { id: 0, size: 40000, alignment: 16 }
+  - { id: 1, size: 16, alignment: 16 }
+body: |
+  bb.0:
+    liveins: $v40, $v60
+    STVX128 killed $v40, 0, %stack.1 :: (store (s128) into %stack.1)
+    STVX128 killed $v60, 0, %fixed-stack.0 :: (store (s128) into %fixed-stack.0)
+    $v41 = LVX128 0, %stack.1 :: (load (s128) from %stack.1)
+    $v61 = LVX128 0, %fixed-stack.0 :: (load (s128) from %fixed-stack.0)
+    BLR8 implicit $lr8, implicit $rm, implicit $v41, implicit $v61
+...

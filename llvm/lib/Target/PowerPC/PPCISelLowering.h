@@ -97,6 +97,10 @@ namespace llvm {
     int isVSLDOIShuffleMask(SDNode *N, unsigned ShuffleKind,
                             SelectionDAG &DAG);
 
+    /// If the single-input VECTOR_SHUFFLE moves whole words of its first
+    /// operand (big-endian), return the vpermwi128 immediate, otherwise -1.
+    int getVPERMWIShuffleImm(ShuffleVectorSDNode *N, SelectionDAG &DAG);
+
     /// isSplatShuffleMask - Return true if the specified VECTOR_SHUFFLE operand
     /// specifies a splat of a single element that is suitable for input to
     /// VSPLTB/VSPLTH/VSPLTW.

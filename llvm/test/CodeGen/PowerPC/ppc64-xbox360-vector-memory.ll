@@ -2,7 +2,13 @@
 ; RUN: llc -mtriple=powerpc64-unknown-xbox360-ilp32 -verify-machineinstrs \
 ; RUN:   -ppc-reg-with-percent-prefix < %t/normal.ll \
 ; RUN:   | FileCheck %s --check-prefix=VEC \
-; RUN:   --implicit-check-not='{{(lvlx|lvrx|stvlx|stvrx)}}' \
+; RUN:   --implicit-check-not='{{(lvlx|lvrx|stvlx|stvrx|lvsl128|lvsr128)}}' \
+; RUN:   --implicit-check-not='{{^[ \t]+std}}' --implicit-check-not='(%r1)' \
+; RUN:   --implicit-check-not=', %r1{{([, ]|$)}}'
+; RUN: llc -mtriple=powerpc64-unknown-xbox360-ilp32 -mattr=-vmx128,+altivec \
+; RUN:   -verify-machineinstrs -ppc-reg-with-percent-prefix < %t/normal.ll \
+; RUN:   | FileCheck %s --check-prefix=VEC \
+; RUN:   --implicit-check-not='{{(lvlx|lvrx|stvlx|stvrx|lvsl128|lvsr128)}}' \
 ; RUN:   --implicit-check-not='{{^[ \t]+std}}' --implicit-check-not='(%r1)' \
 ; RUN:   --implicit-check-not=', %r1{{([, ]|$)}}'
 ; RUN: llc -mtriple=powerpc64-unknown-linux-gnu -mcpu=970 \
@@ -15,7 +21,11 @@
 ; RUN: llc -mtriple=powerpc64-unknown-xbox360-ilp32 -verify-machineinstrs \
 ; RUN:   -ppc-reg-with-percent-prefix < %t/volatile.ll \
 ; RUN:   | FileCheck %s --check-prefix=VOL \
-; RUN:   --implicit-check-not='{{(lvlx|lvrx|stvlx|stvrx)}}'
+; RUN:   --implicit-check-not='{{(lvlx|lvrx|stvlx|stvrx|lvsl128|lvsr128)}}'
+; RUN: llc -mtriple=powerpc64-unknown-xbox360-ilp32 -mattr=-vmx128,+altivec \
+; RUN:   -verify-machineinstrs -ppc-reg-with-percent-prefix < %t/volatile.ll \
+; RUN:   | FileCheck %s --check-prefix=VOL \
+; RUN:   --implicit-check-not='{{(lvlx|lvrx|stvlx|stvrx|lvsl128|lvsr128)}}'
 ; RUN: llc -mtriple=powerpc64-unknown-xbox360-ilp32 -stop-after=finalize-isel \
 ; RUN:   -verify-machineinstrs < %t/volatile.ll \
 ; RUN:   | FileCheck %s --check-prefix=VOL-MMO

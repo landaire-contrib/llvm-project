@@ -369,6 +369,10 @@ def CSR_PPC64_R2 : CalleeSavedRegs<(add CSR_PPC64, X2)>;
 
 def CSR_PPC64_R2_Altivec : CalleeSavedRegs<(add CSR_PPC64_Altivec, X2)>;
 
+// The Xbox 360 preserves v64-v127 when VMX128 is enabled.
+def CSR_Xbox360_VMX128 : CalleeSavedRegs<(add CSR_PPC64,
+                                              (sequence "V%u", 64, 127))>;
+
 def CSR_NoRegs : CalleeSavedRegs<(add)>;
 
 // coldcc calling convection marks most registers as non-volatile.

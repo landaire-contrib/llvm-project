@@ -598,6 +598,48 @@ bool PPCMIPeephole::simplifyCode() {
         Simplified |= Folded;
         break;
       }
+      case PPC::VMADDFP128:
+      case PPC::VNMSUBFP128:
+      case PPC::VSEL128: {
+        // These overwrite their last input. Unless it dies here, tie a
+        // multiplicand that dies (vmaddcfp128), or use the AltiVec form, which
+        // needs v0-v31 but no copy of the input.
+        if (!all_of(MI.explicit_operands(), [](const MachineOperand &MO) {
+              return MO.getReg().isVirtual();
+            }))
+          break;
+        auto Dies = [&](unsigned OpNo) {
+          return MRI->hasOneNonDBGUse(MI.getOperand(OpNo).getReg());
+        };
+        if (Dies(3))
+          break;
+        unsigned NewOpc, A = 1, B = 2;
+        if (MI.getOpcode() == PPC::VMADDFP128 && (Dies(1) || Dies(2))) {
+          NewOpc = PPC::VMADDCFP128;
+          if (!Dies(2))
+            std::swap(A, B);
+        } else {
+          NewOpc = MI.getOpcode() == PPC::VMADDFP128    ? PPC::VMADDFP
+                   : MI.getOpcode() == PPC::VNMSUBFP128 ? PPC::VNMSUBFP
+                                                        : PPC::VSEL;
+        }
+        const MCInstrDesc &Desc = TII->get(NewOpc);
+        MachineInstr *NewMI =
+            BuildMI(MBB, &MI, MI.getDebugLoc(), Desc, MI.getOperand(0).getReg())
+                .add(MI.getOperand(A))
+                .add(MI.getOperand(B))
+                .add(MI.getOperand(3));
+        for (unsigned I = 0; I != 4; ++I) {
+          Register Reg = NewMI->getOperand(I).getReg();
+          MRI->constrainRegClass(Reg, TII->getRegClass(Desc, I));
+          addRegToUpdate(Reg);
+        }
+        LLVM_DEBUG(dbgs() << "Replacing tied VMX128 form: ");
+        LLVM_DEBUG(MI.dump());
+        ToErase = &MI;
+        Simplified = true;
+        break;
+      }
       case PPC::STW:
       case PPC::STD: {
         MachineFrameInfo &MFI = MF->getFrameInfo();

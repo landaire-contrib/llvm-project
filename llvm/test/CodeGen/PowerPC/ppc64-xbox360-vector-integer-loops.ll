@@ -1,6 +1,9 @@
 ; RUN: opt -passes='default<O3>' -mtriple=powerpc64-unknown-xbox360-ilp32 -mcpu=ppc64 -mattr=+altivec < %s \
 ; RUN:   | llc -ppc-reg-with-percent-prefix -O3 -mtriple=powerpc64-unknown-xbox360-ilp32 -mcpu=ppc64 -mattr=+altivec -verify-machineinstrs \
 ; RUN:   | FileCheck %s --check-prefix=XBOX --implicit-check-not='{{^[[:space:]]+(vmul[eo]|vmsum|vsum|vmhr?addshs|vmladduhm)}}'
+; RUN: opt -passes='default<O3>' -mtriple=powerpc64-unknown-xbox360-ilp32 -mcpu=ppc64 -mattr=-vmx128,+altivec < %s \
+; RUN:   | llc -ppc-reg-with-percent-prefix -O3 -mtriple=powerpc64-unknown-xbox360-ilp32 -mcpu=ppc64 -mattr=-vmx128,+altivec -verify-machineinstrs \
+; RUN:   | FileCheck %s --check-prefix=XBOX --implicit-check-not='{{^[[:space:]]+(vmul[eo]|vmsum|vsum|vmhr?addshs|vmladduhm)}}'
 ; RUN: opt -passes='default<O3>' -mtriple=powerpc64-unknown-linux-gnu -mcpu=g5 -mattr=+altivec < %s \
 ; RUN:   | llc -ppc-reg-with-percent-prefix -O3 -mtriple=powerpc64-unknown-linux-gnu -mcpu=g5 -mattr=+altivec -verify-machineinstrs \
 ; RUN:   | FileCheck %s --check-prefix=LINUX

@@ -1006,6 +1006,9 @@ PPCTargetLowering::PPCTargetLowering(const PPCTargetMachine &TM,
     addRegisterClass(MVT::v4i32, &PPC::VRRCRegClass);
     addRegisterClass(MVT::v8i16, &PPC::VRRCRegClass);
     addRegisterClass(MVT::v16i8, &PPC::VRRCRegClass);
+    if (Subtarget.hasVMX128())
+      for (MVT VT : {MVT::v4f32, MVT::v4i32, MVT::v8i16, MVT::v16i8})
+        addRegisterClass(VT, &PPC::VRRC128RegClass);
 
     setOperationAction(ISD::MUL, MVT::v4f32, Legal);
     setOperationAction(ISD::FMA, MVT::v4f32, Legal);
@@ -2109,6 +2112,26 @@ int PPC::isVSLDOIShuffleMask(SDNode *N, unsigned ShuffleKind,
     ShiftAmt = 16 - ShiftAmt;
 
   return ShiftAmt;
+}
+
+int PPC::getVPERMWIShuffleImm(ShuffleVectorSDNode *N, SelectionDAG &DAG) {
+  if (N->getValueType(0) != MVT::v16i8 || DAG.getDataLayout().isLittleEndian())
+    return -1;
+  unsigned Imm = 0;
+  for (unsigned Word = 0; Word != 4; ++Word) {
+    int Src = -1;
+    for (unsigned Byte = 0; Byte != 4; ++Byte) {
+      int Elt = N->getMaskElt(Word * 4 + Byte);
+      if (Elt < 0)
+        continue;
+      if (Elt >= 16 || unsigned(Elt) % 4 != Byte ||
+          (Src >= 0 && Src != Elt / 4))
+        return -1;
+      Src = Elt / 4;
+    }
+    Imm |= unsigned(Src < 0 ? Word : Src) << (6 - 2 * Word);
+  }
+  return Imm;
 }
 
 /// isSplatShuffleMask - Return true if the specified VECTOR_SHUFFLE operand
@@ -10968,6 +10991,10 @@ SDValue PPCTargetLowering::LowerVECTOR_SHUFFLE(SDValue Op,
        PPC::isVPKUDUMShuffleMask(SVOp, ShuffleKind, DAG) ||
        PPC::isVMRGEOShuffleMask(SVOp, true, ShuffleKind, DAG) ||
        PPC::isVMRGEOShuffleMask(SVOp, false, ShuffleKind, DAG))))
+    return Op;
+
+  if (Subtarget.hasVMX128() && V2.isUndef() &&
+      PPC::getVPERMWIShuffleImm(SVOp, DAG) != -1)
     return Op;
 
   // Check to see if this is a shuffle of 4-byte values.  If so, we can use our
@@ -20075,6 +20102,28 @@ PPCTargetLowering::getRegForInlineAsmConstraint(const TargetRegisterInfo *TRI,
 
   std::pair<unsigned, const TargetRegisterClass *> R =
       TargetLowering::getRegForInlineAsmConstraint(TRI, Constraint, VT);
+
+  // VRRC128 sorts before the classes that name v0-v31, so pick the class the
+  // lookup would find without it. v32-v127 exist only with vmx128.
+  if (R.second == &PPC::VRRC128RegClass) {
+    if (!PPC::VRRCRegClass.contains(R.first)) {
+      if (!Subtarget.hasVMX128())
+        return std::make_pair(0U, nullptr);
+    } else {
+      R.second = nullptr;
+      for (const TargetRegisterClass &RC : TRI->regclasses()) {
+        if (&RC == &PPC::VRRC128RegClass || !RC.contains(R.first) ||
+            !isLegalRC(*TRI, RC))
+          continue;
+        if (TRI->isTypeLegalForClass(RC, VT)) {
+          R.second = &RC;
+          break;
+        }
+        if (!R.second)
+          R.second = &RC;
+      }
+    }
+  }
 
   // r[0-9]+ are used, on PPC64, to refer to the corresponding 64-bit registers
   // (which we call X[0-9]+). If a 64-bit value has been requested, and a

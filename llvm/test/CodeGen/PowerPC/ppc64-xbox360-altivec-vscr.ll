@@ -1,4 +1,10 @@
-; RUN: llc -mtriple=powerpc64-unknown-xbox360-ilp32 -mattr=+altivec \
+; RUN: llc -mtriple=powerpc64-unknown-xbox360-ilp32 -mattr=+altivec,+vmx128 \
+; RUN:   -verify-machineinstrs -ppc-reg-with-percent-prefix < %s \
+; RUN:   | FileCheck %s
+; RUN: llc -mtriple=powerpc64-unknown-xbox360-ilp32 -mattr=+altivec,+vmx128 -O0 \
+; RUN:   -verify-machineinstrs -ppc-reg-with-percent-prefix < %s \
+; RUN:   | FileCheck %s
+; RUN: llc -mtriple=powerpc64-unknown-xbox360-ilp32 -mattr=+altivec,-vmx128 \
 ; RUN:   -verify-machineinstrs -ppc-reg-with-percent-prefix < %s \
 ; RUN:   | FileCheck %s --check-prefix=CLASSIC
 ; RUN: llc -mtriple=powerpc64-unknown-linux-gnu -mcpu=g5 -mattr=+altivec \
@@ -14,6 +20,10 @@
 ; CLASSIC: vpkuwus
 ; CLASSIC: mfvscr
 
+; CHECK-LABEL: var_vmsumuhs:
+; CHECK: mtvscr
+; CHECK: vpkuwus128 {{%v[0-9]+}}, [[M:%v[0-9]+]], [[M]]
+; CHECK: mfvscr
 ; ALTIVEC-LABEL: var_vmsumuhs:
 ; ALTIVEC: mtvscr
 ; ALTIVEC: vmsumuhs
@@ -30,6 +40,11 @@ define void @var_vmsumuhs(ptr %p0, ptr %p1, ptr %p2, ptr %pr, ptr %ps) {
   ret void
 }
 
+; CHECK-LABEL: sat_vmsumuhs:
+; CHECK: mtvscr
+; CHECK: vspltisw128 [[M:%v[0-9]+]], -1
+; CHECK-NEXT: vpkuwus128 {{%v[0-9]+}}, [[M]], [[M]]
+; CHECK: mfvscr
 ; ALTIVEC-LABEL: sat_vmsumuhs:
 ; ALTIVEC: mtvscr
 ; ALTIVEC: vmsumuhs
@@ -43,6 +58,11 @@ define void @sat_vmsumuhs(ptr %pr, ptr %ps) {
   ret void
 }
 
+; CHECK-LABEL: nosat_vmsumuhs:
+; CHECK: vspltisw128 [[Z:%v[0-9]+]], 0
+; CHECK: mtvscr [[Z]]
+; CHECK: vpkuwus128 {{%v[0-9]+}}, [[Z]], [[Z]]
+; CHECK: mfvscr
 ; ALTIVEC-LABEL: nosat_vmsumuhs:
 ; ALTIVEC: mtvscr
 ; ALTIVEC: vmsumuhs
@@ -56,6 +76,10 @@ define void @nosat_vmsumuhs(ptr %pr, ptr %ps) {
   ret void
 }
 
+; CHECK-LABEL: var_vmsumshs:
+; CHECK: mtvscr
+; CHECK: vpkuwus128 {{%v[0-9]+}}, [[M:%v[0-9]+]], [[M]]
+; CHECK: mfvscr
 ; ALTIVEC-LABEL: var_vmsumshs:
 ; ALTIVEC: mtvscr
 ; ALTIVEC: vmsumshs
@@ -72,6 +96,11 @@ define void @var_vmsumshs(ptr %p0, ptr %p1, ptr %p2, ptr %pr, ptr %ps) {
   ret void
 }
 
+; CHECK-LABEL: sat_vmsumshs:
+; CHECK: mtvscr
+; CHECK: vspltisw128 [[M:%v[0-9]+]], -1
+; CHECK-NEXT: vpkuwus128 {{%v[0-9]+}}, [[M]], [[M]]
+; CHECK: mfvscr
 ; ALTIVEC-LABEL: sat_vmsumshs:
 ; ALTIVEC: mtvscr
 ; ALTIVEC: vmsumshs
@@ -85,6 +114,11 @@ define void @sat_vmsumshs(ptr %pr, ptr %ps) {
   ret void
 }
 
+; CHECK-LABEL: nosat_vmsumshs:
+; CHECK: vspltisw128 [[Z:%v[0-9]+]], 0
+; CHECK: mtvscr [[Z]]
+; CHECK: vpkuwus128 {{%v[0-9]+}}, [[Z]], [[Z]]
+; CHECK: mfvscr
 ; ALTIVEC-LABEL: nosat_vmsumshs:
 ; ALTIVEC: mtvscr
 ; ALTIVEC: vmsumshs
@@ -98,6 +132,10 @@ define void @nosat_vmsumshs(ptr %pr, ptr %ps) {
   ret void
 }
 
+; CHECK-LABEL: var_vsum4ubs:
+; CHECK: mtvscr
+; CHECK: vpkuwus128 {{%v[0-9]+}}, [[M:%v[0-9]+]], [[M]]
+; CHECK: mfvscr
 ; ALTIVEC-LABEL: var_vsum4ubs:
 ; ALTIVEC: mtvscr
 ; ALTIVEC: vsum4ubs
@@ -113,6 +151,11 @@ define void @var_vsum4ubs(ptr %p0, ptr %p1, ptr %pr, ptr %ps) {
   ret void
 }
 
+; CHECK-LABEL: sat_vsum4ubs:
+; CHECK: mtvscr
+; CHECK: vspltisw128 [[M:%v[0-9]+]], -1
+; CHECK-NEXT: vpkuwus128 {{%v[0-9]+}}, [[M]], [[M]]
+; CHECK: mfvscr
 ; ALTIVEC-LABEL: sat_vsum4ubs:
 ; ALTIVEC: mtvscr
 ; ALTIVEC: vsum4ubs
@@ -126,6 +169,11 @@ define void @sat_vsum4ubs(ptr %pr, ptr %ps) {
   ret void
 }
 
+; CHECK-LABEL: nosat_vsum4ubs:
+; CHECK: vspltisw128 [[Z:%v[0-9]+]], 0
+; CHECK: mtvscr [[Z]]
+; CHECK: vpkuwus128 {{%v[0-9]+}}, [[Z]], [[Z]]
+; CHECK: mfvscr
 ; ALTIVEC-LABEL: nosat_vsum4ubs:
 ; ALTIVEC: mtvscr
 ; ALTIVEC: vsum4ubs
@@ -139,6 +187,10 @@ define void @nosat_vsum4ubs(ptr %pr, ptr %ps) {
   ret void
 }
 
+; CHECK-LABEL: var_vsum4sbs:
+; CHECK: mtvscr
+; CHECK: vpkuwus128 {{%v[0-9]+}}, [[M:%v[0-9]+]], [[M]]
+; CHECK: mfvscr
 ; ALTIVEC-LABEL: var_vsum4sbs:
 ; ALTIVEC: mtvscr
 ; ALTIVEC: vsum4sbs
@@ -154,6 +206,11 @@ define void @var_vsum4sbs(ptr %p0, ptr %p1, ptr %pr, ptr %ps) {
   ret void
 }
 
+; CHECK-LABEL: sat_vsum4sbs:
+; CHECK: mtvscr
+; CHECK: vspltisw128 [[M:%v[0-9]+]], -1
+; CHECK-NEXT: vpkuwus128 {{%v[0-9]+}}, [[M]], [[M]]
+; CHECK: mfvscr
 ; ALTIVEC-LABEL: sat_vsum4sbs:
 ; ALTIVEC: mtvscr
 ; ALTIVEC: vsum4sbs
@@ -167,6 +224,11 @@ define void @sat_vsum4sbs(ptr %pr, ptr %ps) {
   ret void
 }
 
+; CHECK-LABEL: nosat_vsum4sbs:
+; CHECK: vspltisw128 [[Z:%v[0-9]+]], 0
+; CHECK: mtvscr [[Z]]
+; CHECK: vpkuwus128 {{%v[0-9]+}}, [[Z]], [[Z]]
+; CHECK: mfvscr
 ; ALTIVEC-LABEL: nosat_vsum4sbs:
 ; ALTIVEC: mtvscr
 ; ALTIVEC: vsum4sbs
@@ -180,6 +242,10 @@ define void @nosat_vsum4sbs(ptr %pr, ptr %ps) {
   ret void
 }
 
+; CHECK-LABEL: var_vsum4shs:
+; CHECK: mtvscr
+; CHECK: vpkuwus128 {{%v[0-9]+}}, [[M:%v[0-9]+]], [[M]]
+; CHECK: mfvscr
 ; ALTIVEC-LABEL: var_vsum4shs:
 ; ALTIVEC: mtvscr
 ; ALTIVEC: vsum4shs
@@ -195,6 +261,11 @@ define void @var_vsum4shs(ptr %p0, ptr %p1, ptr %pr, ptr %ps) {
   ret void
 }
 
+; CHECK-LABEL: sat_vsum4shs:
+; CHECK: mtvscr
+; CHECK: vspltisw128 [[M:%v[0-9]+]], -1
+; CHECK-NEXT: vpkuwus128 {{%v[0-9]+}}, [[M]], [[M]]
+; CHECK: mfvscr
 ; ALTIVEC-LABEL: sat_vsum4shs:
 ; ALTIVEC: mtvscr
 ; ALTIVEC: vsum4shs
@@ -208,6 +279,11 @@ define void @sat_vsum4shs(ptr %pr, ptr %ps) {
   ret void
 }
 
+; CHECK-LABEL: nosat_vsum4shs:
+; CHECK: vspltisw128 [[Z:%v[0-9]+]], 0
+; CHECK: mtvscr [[Z]]
+; CHECK: vpkuwus128 {{%v[0-9]+}}, [[Z]], [[Z]]
+; CHECK: mfvscr
 ; ALTIVEC-LABEL: nosat_vsum4shs:
 ; ALTIVEC: mtvscr
 ; ALTIVEC: vsum4shs
@@ -221,6 +297,10 @@ define void @nosat_vsum4shs(ptr %pr, ptr %ps) {
   ret void
 }
 
+; CHECK-LABEL: var_vsum2sws:
+; CHECK: mtvscr
+; CHECK: vpkuwus128 {{%v[0-9]+}}, [[M:%v[0-9]+]], [[M]]
+; CHECK: mfvscr
 ; ALTIVEC-LABEL: var_vsum2sws:
 ; ALTIVEC: mtvscr
 ; ALTIVEC: vsum2sws
@@ -236,6 +316,18 @@ define void @var_vsum2sws(ptr %p0, ptr %p1, ptr %pr, ptr %ps) {
   ret void
 }
 
+; CHECK: [[MASK:\.LCPI[0-9]+_[0-9]+]]:
+; CHECK-NEXT: .long 0
+; CHECK-NEXT: .long 4294967295
+; CHECK-NEXT: .long 0
+; CHECK-NEXT: .long 4294967295
+; CHECK-LABEL: sat_vsum2sws:
+; CHECK-DAG: mtvscr
+; CHECK-DAG: li [[LO:%r[0-9]+]], [[MASK]]@l
+; CHECK-DAG: lis [[HI:%r[0-9]+]], [[MASK]]@ha
+; CHECK: lvx128 [[M:%v[0-9]+]], [[HI]], [[LO]]
+; CHECK: vpkuwus128 {{%v[0-9]+}}, [[M]], [[M]]
+; CHECK: mfvscr
 ; ALTIVEC-LABEL: sat_vsum2sws:
 ; ALTIVEC: mtvscr
 ; ALTIVEC: vsum2sws
@@ -249,6 +341,11 @@ define void @sat_vsum2sws(ptr %pr, ptr %ps) {
   ret void
 }
 
+; CHECK-LABEL: nosat_vsum2sws:
+; CHECK: vspltisw128 [[Z:%v[0-9]+]], 0
+; CHECK: mtvscr [[Z]]
+; CHECK: vpkuwus128 {{%v[0-9]+}}, [[Z]], [[Z]]
+; CHECK: mfvscr
 ; ALTIVEC-LABEL: nosat_vsum2sws:
 ; ALTIVEC: mtvscr
 ; ALTIVEC: vsum2sws
@@ -262,6 +359,10 @@ define void @nosat_vsum2sws(ptr %pr, ptr %ps) {
   ret void
 }
 
+; CHECK-LABEL: var_vsumsws:
+; CHECK: mtvscr
+; CHECK: vpkuwus128 {{%v[0-9]+}}, [[M:%v[0-9]+]], [[M]]
+; CHECK: mfvscr
 ; ALTIVEC-LABEL: var_vsumsws:
 ; ALTIVEC: mtvscr
 ; ALTIVEC: vsumsws
@@ -277,6 +378,18 @@ define void @var_vsumsws(ptr %p0, ptr %p1, ptr %pr, ptr %ps) {
   ret void
 }
 
+; CHECK: [[MASK:\.LCPI[0-9]+_[0-9]+]]:
+; CHECK-NEXT: .long 0
+; CHECK-NEXT: .long 0
+; CHECK-NEXT: .long 0
+; CHECK-NEXT: .long 4294967295
+; CHECK-LABEL: sat_vsumsws:
+; CHECK-DAG: mtvscr
+; CHECK-DAG: li [[LO:%r[0-9]+]], [[MASK]]@l
+; CHECK-DAG: lis [[HI:%r[0-9]+]], [[MASK]]@ha
+; CHECK: lvx128 [[M:%v[0-9]+]], [[HI]], [[LO]]
+; CHECK: vpkuwus128 {{%v[0-9]+}}, [[M]], [[M]]
+; CHECK: mfvscr
 ; ALTIVEC-LABEL: sat_vsumsws:
 ; ALTIVEC: mtvscr
 ; ALTIVEC: vsumsws
@@ -290,6 +403,11 @@ define void @sat_vsumsws(ptr %pr, ptr %ps) {
   ret void
 }
 
+; CHECK-LABEL: nosat_vsumsws:
+; CHECK: vspltisw128 [[Z:%v[0-9]+]], 0
+; CHECK: mtvscr [[Z]]
+; CHECK: vpkuwus128 {{%v[0-9]+}}, [[Z]], [[Z]]
+; CHECK: mfvscr
 ; ALTIVEC-LABEL: nosat_vsumsws:
 ; ALTIVEC: mtvscr
 ; ALTIVEC: vsumsws
@@ -303,6 +421,10 @@ define void @nosat_vsumsws(ptr %pr, ptr %ps) {
   ret void
 }
 
+; CHECK-LABEL: var_vmhaddshs:
+; CHECK: mtvscr
+; CHECK: vpkswss128 {{%v[0-9]+}}, {{%v[0-9]+}}, {{%v[0-9]+}}
+; CHECK: mfvscr
 ; ALTIVEC-LABEL: var_vmhaddshs:
 ; ALTIVEC: mtvscr
 ; ALTIVEC: vmhaddshs
@@ -319,6 +441,12 @@ define void @var_vmhaddshs(ptr %p0, ptr %p1, ptr %p2, ptr %pr, ptr %ps) {
   ret void
 }
 
+; CHECK-LABEL: sat_vmhaddshs:
+; CHECK: mtvscr
+; CHECK: vspltisw128 [[A:%v[0-9]+]], -16
+; CHECK-NEXT: vsrw128 [[P:%v[0-9]+]], [[A]], [[A]]
+; CHECK-NEXT: vpkswss128 {{%v[0-9]+}}, [[P]], [[P]]
+; CHECK: mfvscr
 ; ALTIVEC-LABEL: sat_vmhaddshs:
 ; ALTIVEC: mtvscr
 ; ALTIVEC: vmhaddshs
@@ -332,6 +460,11 @@ define void @sat_vmhaddshs(ptr %pr, ptr %ps) {
   ret void
 }
 
+; CHECK-LABEL: nosat_vmhaddshs:
+; CHECK: vspltisw128 [[Z:%v[0-9]+]], 0
+; CHECK: mtvscr [[Z]]
+; CHECK: vpkswss128 {{%v[0-9]+}}, [[Z]], [[Z]]
+; CHECK: mfvscr
 ; ALTIVEC-LABEL: nosat_vmhaddshs:
 ; ALTIVEC: mtvscr
 ; ALTIVEC: vmhaddshs
@@ -345,6 +478,10 @@ define void @nosat_vmhaddshs(ptr %pr, ptr %ps) {
   ret void
 }
 
+; CHECK-LABEL: var_vmhraddshs:
+; CHECK: mtvscr
+; CHECK: vpkswss128 {{%v[0-9]+}}, {{%v[0-9]+}}, {{%v[0-9]+}}
+; CHECK: mfvscr
 ; ALTIVEC-LABEL: var_vmhraddshs:
 ; ALTIVEC: mtvscr
 ; ALTIVEC: vmhraddshs
@@ -361,6 +498,12 @@ define void @var_vmhraddshs(ptr %p0, ptr %p1, ptr %p2, ptr %pr, ptr %ps) {
   ret void
 }
 
+; CHECK-LABEL: sat_vmhraddshs:
+; CHECK: mtvscr
+; CHECK: vspltisw128 [[A:%v[0-9]+]], -16
+; CHECK-NEXT: vsrw128 [[P:%v[0-9]+]], [[A]], [[A]]
+; CHECK-NEXT: vpkswss128 {{%v[0-9]+}}, [[P]], [[P]]
+; CHECK: mfvscr
 ; ALTIVEC-LABEL: sat_vmhraddshs:
 ; ALTIVEC: mtvscr
 ; ALTIVEC: vmhraddshs
@@ -374,6 +517,11 @@ define void @sat_vmhraddshs(ptr %pr, ptr %ps) {
   ret void
 }
 
+; CHECK-LABEL: nosat_vmhraddshs:
+; CHECK: vspltisw128 [[Z:%v[0-9]+]], 0
+; CHECK: mtvscr [[Z]]
+; CHECK: vpkswss128 {{%v[0-9]+}}, [[Z]], [[Z]]
+; CHECK: mfvscr
 ; ALTIVEC-LABEL: nosat_vmhraddshs:
 ; ALTIVEC: mtvscr
 ; ALTIVEC: vmhraddshs

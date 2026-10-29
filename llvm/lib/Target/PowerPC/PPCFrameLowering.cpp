@@ -226,9 +226,32 @@ const PPCFrameLowering::SpillSlot *PPCFrameLowering::getCalleeSavedSpillSlots(
       CALLEE_SAVED_VRS
   };
 
-  // The Xbox 360 has no callee-saved vector registers that LLVM models.
+  // The Xbox 360 saves v127 down to v64, when VMX128 makes them nonvolatile,
+  // below the general and floating-point register save areas.
   static const SpillSlot Xbox360Offsets[] = {
-      CALLEE_SAVED_FPRS, CALLEE_SAVED_GPRS64, {PPC::CR2, -4}};
+      CALLEE_SAVED_FPRS, CALLEE_SAVED_GPRS64, {PPC::CR2, -4},
+      {PPC::V127, -16},  {PPC::V126, -32},    {PPC::V125, -48},
+      {PPC::V124, -64},  {PPC::V123, -80},    {PPC::V122, -96},
+      {PPC::V121, -112}, {PPC::V120, -128},   {PPC::V119, -144},
+      {PPC::V118, -160}, {PPC::V117, -176},   {PPC::V116, -192},
+      {PPC::V115, -208}, {PPC::V114, -224},   {PPC::V113, -240},
+      {PPC::V112, -256}, {PPC::V111, -272},   {PPC::V110, -288},
+      {PPC::V109, -304}, {PPC::V108, -320},   {PPC::V107, -336},
+      {PPC::V106, -352}, {PPC::V105, -368},   {PPC::V104, -384},
+      {PPC::V103, -400}, {PPC::V102, -416},   {PPC::V101, -432},
+      {PPC::V100, -448}, {PPC::V99, -464},    {PPC::V98, -480},
+      {PPC::V97, -496},  {PPC::V96, -512},    {PPC::V95, -528},
+      {PPC::V94, -544},  {PPC::V93, -560},    {PPC::V92, -576},
+      {PPC::V91, -592},  {PPC::V90, -608},    {PPC::V89, -624},
+      {PPC::V88, -640},  {PPC::V87, -656},    {PPC::V86, -672},
+      {PPC::V85, -688},  {PPC::V84, -704},    {PPC::V83, -720},
+      {PPC::V82, -736},  {PPC::V81, -752},    {PPC::V80, -768},
+      {PPC::V79, -784},  {PPC::V78, -800},    {PPC::V77, -816},
+      {PPC::V76, -832},  {PPC::V75, -848},    {PPC::V74, -864},
+      {PPC::V73, -880},  {PPC::V72, -896},    {PPC::V71, -912},
+      {PPC::V70, -928},  {PPC::V69, -944},    {PPC::V68, -960},
+      {PPC::V67, -976},  {PPC::V66, -992},    {PPC::V65, -1008},
+      {PPC::V64, -1024}};
 
   static const SpillSlot AIXOffsets32[] = {CALLEE_SAVED_FPRS,
                                            CALLEE_SAVED_GPRS32,
@@ -921,6 +944,28 @@ void PPCFrameLowering::emitPrologue(MachineFunction &MF,
       .addReg(SPReg);
   }
 
+  // The Xbox 360 saves vector registers relative to the incoming stack pointer
+  // before claiming the frame.
+  if (Subtarget.isXbox360()) {
+    for (const CalleeSavedInfo &I : MFI.getCalleeSavedInfo()) {
+      MCRegister Reg = I.getReg();
+      if (!PPC::VRRC128RegClass.contains(Reg))
+        continue;
+      int64_t Offset = MFI.getObjectOffset(I.getFrameIdx());
+      BuildMI(MBB, MBBI, dl, TII.get(PPC::LI), TempReg).addImm(Offset);
+      BuildMI(MBB, MBBI, dl, TII.get(PPC::STVX128))
+          .addReg(Reg, getKillRegState(!MF.getRegInfo().isLiveIn(Reg)))
+          .addReg(SPReg)
+          .addReg(TempReg, RegState::Kill);
+      if (needsCFI) {
+        unsigned CFIIndex = MF.addFrameInst(MCCFIInstruction::createOffset(
+            nullptr, MRI->getDwarfRegNum(Reg, true), Offset));
+        BuildMI(MBB, MBBI, dl, TII.get(TargetOpcode::CFI_INSTRUCTION))
+            .addCFIIndex(CFIIndex);
+      }
+    }
+  }
+
   // Skip the rest if this is a leaf function & all spills fit in the Red Zone.
   if (!FrameSize) {
     if (MustSaveLR && !SaveLRBeforeUpdate)
@@ -1236,6 +1281,10 @@ void PPCFrameLowering::emitPrologue(MachineFunction &MF,
         continue;
 
       if ((Reg == PPC::X2 || Reg == PPC::R2) && MustSaveTOC)
+        continue;
+
+      // Xbox 360 vector saves are described where they are stored.
+      if (Subtarget.isXbox360() && PPC::VRRC128RegClass.contains(Reg))
         continue;
 
       // For 64-bit SVR4 when we have spilled CRs, the spill location
@@ -2235,6 +2284,7 @@ void PPCFrameLowering::processFunctionBeforeFrameFinalized(MachineFunction &MF,
                PPC::CRRCRegClass.contains(Reg)) {
       ; // do nothing, as we already know whether CRs are spilled
     } else if (PPC::VRRCRegClass.contains(Reg) ||
+               PPC::VRRC128RegClass.contains(Reg) ||
                PPC::SPERCRegClass.contains(Reg)) {
       // Altivec and SPE are mutually exclusive, but have the same stack
       // alignment requirements, so overload the save area for both cases.
@@ -2564,6 +2614,10 @@ bool PPCFrameLowering::spillCalleeSavedRegisters(
 
     // The actual spill will happen in the prologue.
     if ((Reg == PPC::X2 || Reg == PPC::R2) && MustSaveTOC)
+      continue;
+
+    // The Xbox 360 prologue saves vector registers before claiming the frame.
+    if (Subtarget.isXbox360() && PPC::VRRC128RegClass.contains(Reg))
       continue;
 
     // Insert the spill to the stack frame.

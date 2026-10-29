@@ -1778,6 +1778,8 @@ void PPCInstrInfo::copyPhysReg(MachineBasicBlock &MBB,
     Opc = PPC::MCRF;
   else if (PPC::VRRCRegClass.contains(DestReg, SrcReg))
     Opc = PPC::VOR;
+  else if (PPC::VRRC128RegClass.contains(DestReg, SrcReg))
+    Opc = PPC::VOR128;
   else if (PPC::VSRCRegClass.contains(DestReg, SrcReg))
     // There are two different ways this can be done:
     //   1. xxlor : This has lower latency (on the P7), 2 cycles, but can only
@@ -1927,6 +1929,8 @@ unsigned PPCInstrInfo::getSpillIndex(const TargetRegisterClass *RC) const {
     OpcodeIndex = SOK_CRBitSpill;
   } else if (PPC::VRRCRegClass.hasSubClassEq(RC)) {
     OpcodeIndex = SOK_VRVectorSpill;
+  } else if (PPC::VRRC128RegClass.hasSubClassEq(RC)) {
+    OpcodeIndex = SOK_VRVector128Spill;
   } else if (PPC::VSRCRegClass.hasSubClassEq(RC)) {
     OpcodeIndex = SOK_VSXVectorSpill;
   } else if (PPC::VSFRCRegClass.hasSubClassEq(RC)) {
