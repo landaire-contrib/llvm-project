@@ -545,6 +545,15 @@ bool PPCTargetInfo::initFeatureMap(
   if (FeaturesOpt)
     Features = FeaturesOpt.value();
 
+  // Xenon has AltiVec with VMX128, unless the CPU has VSX. Record the choice
+  // either way, as the backend enables VMX128 by default on the Xbox 360.
+  if (TheTriple.getOS() == llvm::Triple::Xbox360) {
+    bool HasVSX = Features.lookup("vsx");
+    if (!HasVSX)
+      Features["altivec"] = true;
+    Features["vmx128"] = !HasVSX;
+  }
+
   if (!ppcUserFeaturesCheck(Diags, FeaturesVec))
     return false;
 
