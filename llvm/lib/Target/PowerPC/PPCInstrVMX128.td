@@ -283,7 +283,9 @@ def VCMPBFP128_rec  : VCMP128_rec<12, "vcmpbfp128.">;
 def VCMPEQUW128     : VCMP128<16, "vcmpequw128">;
 def VCMPEQUW128_rec : VCMP128_rec<16, "vcmpequw128.">;
 
+let hasSideEffects = 1 in
 def VCFPSXWS128 : VX128_VD_VB_UIMM<0x23, "vcfpsxws128", IIC_VecFP>;
+let hasSideEffects = 1 in
 def VCFPUXWS128 : VX128_VD_VB_UIMM<0x27, "vcfpuxws128", IIC_VecFP>;
 def VCSXWFP128  : VX128_VD_VB_UIMM<0x2B, "vcsxwfp128", IIC_VecFP>;
 def VCUXWFP128  : VX128_VD_VB_UIMM<0x2F, "vcuxwfp128", IIC_VecFP>;

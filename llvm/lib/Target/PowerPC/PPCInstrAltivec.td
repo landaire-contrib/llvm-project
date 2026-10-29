@@ -537,12 +537,14 @@ def VADDUWM : VXForm_1<128, (outs vrrc:$VD), (ins vrrc:$VA, vrrc:$VB),
                       [(set v4i32:$VD, (add v4i32:$VA, v4i32:$VB))]>;
 
 def VADDCUW : VX1_Int_Ty<384, "vaddcuw", int_ppc_altivec_vaddcuw, v4i32>;
-def VADDSBS : VX1_Int_Ty<768, "vaddsbs", int_ppc_altivec_vaddsbs, v16i8>;
-def VADDSHS : VX1_Int_Ty<832, "vaddshs", int_ppc_altivec_vaddshs, v8i16>;
-def VADDSWS : VX1_Int_Ty<896, "vaddsws", int_ppc_altivec_vaddsws, v4i32>;
-def VADDUBS : VX1_Int_Ty<512, "vaddubs", int_ppc_altivec_vaddubs, v16i8>;
-def VADDUHS : VX1_Int_Ty<576, "vadduhs", int_ppc_altivec_vadduhs, v8i16>;
-def VADDUWS : VX1_Int_Ty<640, "vadduws", int_ppc_altivec_vadduws, v4i32>;
+let hasSideEffects = 1 in {
+  def VADDSBS : VX1_Int_Ty<768, "vaddsbs", int_ppc_altivec_vaddsbs, v16i8>;
+  def VADDSHS : VX1_Int_Ty<832, "vaddshs", int_ppc_altivec_vaddshs, v8i16>;
+  def VADDSWS : VX1_Int_Ty<896, "vaddsws", int_ppc_altivec_vaddsws, v4i32>;
+  def VADDUBS : VX1_Int_Ty<512, "vaddubs", int_ppc_altivec_vaddubs, v16i8>;
+  def VADDUHS : VX1_Int_Ty<576, "vadduhs", int_ppc_altivec_vadduhs, v8i16>;
+  def VADDUWS : VX1_Int_Ty<640, "vadduws", int_ppc_altivec_vadduws, v4i32>;
+}
 } // isCommutable
 
 let isCommutable = 1 in
@@ -562,10 +564,12 @@ def VCFUX  : VXForm_1<778, (outs vrrc:$VD), (ins u5imm:$VA, vrrc:$VB),
                       "vcfux $VD, $VB, $VA", IIC_VecFP,
                       [(set v4f32:$VD,
                              (int_ppc_altivec_vcfux v4i32:$VB, u5imm_timm:$VA))]>;
+let hasSideEffects = 1 in
 def VCTSXS : VXForm_1<970, (outs vrrc:$VD), (ins u5imm:$VA, vrrc:$VB),
                       "vctsxs $VD, $VB, $VA", IIC_VecFP,
                       [(set v4i32:$VD,
                              (int_ppc_altivec_vctsxs v4f32:$VB, u5imm_timm:$VA))]>;
+let hasSideEffects = 1 in
 def VCTUXS : VXForm_1<906, (outs vrrc:$VD), (ins u5imm:$VA, vrrc:$VB),
                       "vctuxs $VD, $VB, $VA", IIC_VecFP,
                       [(set v4i32:$VD,
@@ -579,6 +583,7 @@ def VCFSX_0 : VXForm_1<842, (outs vrrc:$VD), (ins vrrc:$VB),
                        "vcfsx $VD, $VB, 0", IIC_VecFP,
                        [(set v4f32:$VD,
                              (int_ppc_altivec_vcfsx v4i32:$VB, 0))]>;
+let hasSideEffects = 1 in
 def VCTUXS_0 : VXForm_1<906, (outs vrrc:$VD), (ins vrrc:$VB),
                         "vctuxs $VD, $VB, 0", IIC_VecFP,
                         [(set v4i32:$VD,
@@ -587,6 +592,7 @@ def VCFUX_0 : VXForm_1<778, (outs vrrc:$VD), (ins vrrc:$VB),
                        "vcfux $VD, $VB, 0", IIC_VecFP,
                        [(set v4f32:$VD,
                                (int_ppc_altivec_vcfux v4i32:$VB, 0))]>;
+let hasSideEffects = 1 in
 def VCTSXS_0 : VXForm_1<970, (outs vrrc:$VD), (ins vrrc:$VB),
                       "vctsxs $VD, $VB, 0", IIC_VecFP,
                       [(set v4i32:$VD,
@@ -694,12 +700,14 @@ def VSUBUWM : VXForm_1<1152, (outs vrrc:$VD), (ins vrrc:$VA, vrrc:$VB),
                       "vsubuwm $VD, $VA, $VB", IIC_VecGeneral,
                       [(set v4i32:$VD, (sub v4i32:$VA, v4i32:$VB))]>;
 
-def VSUBSBS : VX1_Int_Ty<1792, "vsubsbs" , int_ppc_altivec_vsubsbs, v16i8>;
-def VSUBSHS : VX1_Int_Ty<1856, "vsubshs" , int_ppc_altivec_vsubshs, v8i16>;
-def VSUBSWS : VX1_Int_Ty<1920, "vsubsws" , int_ppc_altivec_vsubsws, v4i32>;
-def VSUBUBS : VX1_Int_Ty<1536, "vsububs" , int_ppc_altivec_vsububs, v16i8>;
-def VSUBUHS : VX1_Int_Ty<1600, "vsubuhs" , int_ppc_altivec_vsubuhs, v8i16>;
-def VSUBUWS : VX1_Int_Ty<1664, "vsubuws" , int_ppc_altivec_vsubuws, v4i32>;
+let hasSideEffects = 1 in {
+  def VSUBSBS : VX1_Int_Ty<1792, "vsubsbs" , int_ppc_altivec_vsubsbs, v16i8>;
+  def VSUBSHS : VX1_Int_Ty<1856, "vsubshs" , int_ppc_altivec_vsubshs, v8i16>;
+  def VSUBSWS : VX1_Int_Ty<1920, "vsubsws" , int_ppc_altivec_vsubsws, v4i32>;
+  def VSUBUBS : VX1_Int_Ty<1536, "vsububs" , int_ppc_altivec_vsububs, v16i8>;
+  def VSUBUHS : VX1_Int_Ty<1600, "vsubuhs" , int_ppc_altivec_vsubuhs, v8i16>;
+  def VSUBUWS : VX1_Int_Ty<1664, "vsubuws" , int_ppc_altivec_vsubuws, v4i32>;
+}
 
 let hasSideEffects = 1 in {
   def VSUMSWS : VX1_Int_Ty<1928, "vsumsws" , int_ppc_altivec_vsumsws, v4i32>;

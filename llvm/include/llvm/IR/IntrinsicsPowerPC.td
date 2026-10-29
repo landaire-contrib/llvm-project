@@ -971,23 +971,27 @@ def int_ppc_altivec_vminuh : PowerPC_Vec_HHH_Intrinsic<"vminuh">;
 def int_ppc_altivec_vminuw : PowerPC_Vec_WWW_Intrinsic<"vminuw">;
 def int_ppc_altivec_vminud : PowerPC_Vec_DDD_Intrinsic<"vminud">;
 
-// Saturating adds.
+// Saturating adds, which may set VSCR[SAT].
+let IntrProperties = [IntrNoMem, IntrHasSideEffects] in {
 def int_ppc_altivec_vaddubs : PowerPC_Vec_BBB_Intrinsic<"vaddubs">;
 def int_ppc_altivec_vaddsbs : PowerPC_Vec_BBB_Intrinsic<"vaddsbs">;
 def int_ppc_altivec_vadduhs : PowerPC_Vec_HHH_Intrinsic<"vadduhs">;
 def int_ppc_altivec_vaddshs : PowerPC_Vec_HHH_Intrinsic<"vaddshs">;
 def int_ppc_altivec_vadduws : PowerPC_Vec_WWW_Intrinsic<"vadduws">;
 def int_ppc_altivec_vaddsws : PowerPC_Vec_WWW_Intrinsic<"vaddsws">;
+}
 def int_ppc_altivec_vaddcuw : PowerPC_Vec_WWW_Intrinsic<"vaddcuw">;
 def int_ppc_altivec_vaddcuq : PowerPC_Vec_QQQ_Intrinsic<"vaddcuq">;
 
-// Saturating subs.
+// Saturating subs, which may set VSCR[SAT].
+let IntrProperties = [IntrNoMem, IntrHasSideEffects] in {
 def int_ppc_altivec_vsububs : PowerPC_Vec_BBB_Intrinsic<"vsububs">;
 def int_ppc_altivec_vsubsbs : PowerPC_Vec_BBB_Intrinsic<"vsubsbs">;
 def int_ppc_altivec_vsubuhs : PowerPC_Vec_HHH_Intrinsic<"vsubuhs">;
 def int_ppc_altivec_vsubshs : PowerPC_Vec_HHH_Intrinsic<"vsubshs">;
 def int_ppc_altivec_vsubuws : PowerPC_Vec_WWW_Intrinsic<"vsubuws">;
 def int_ppc_altivec_vsubsws : PowerPC_Vec_WWW_Intrinsic<"vsubsws">;
+}
 def int_ppc_altivec_vsubcuw : PowerPC_Vec_WWW_Intrinsic<"vsubcuw">;
 def int_ppc_altivec_vsubcuq : PowerPC_Vec_QQQ_Intrinsic<"vsubcuq">;
 
@@ -1178,10 +1182,12 @@ let TargetPrefix = "ppc" in {  // All PPC intrinsics start with "llvm.ppc.".
                             [IntrNoMem, ImmArg<ArgIndex<1>>]>;
   def int_ppc_altivec_vctsxs : ClangBuiltin<"__builtin_altivec_vctsxs">,
       DefaultAttrsIntrinsic<[llvm_v4i32_ty], [llvm_v4f32_ty, llvm_i32_ty],
-                            [IntrNoMem, ImmArg<ArgIndex<1>>]>;
+                            [IntrNoMem, IntrHasSideEffects,
+                             ImmArg<ArgIndex<1>>]>;
   def int_ppc_altivec_vctuxs : ClangBuiltin<"__builtin_altivec_vctuxs">,
       DefaultAttrsIntrinsic<[llvm_v4i32_ty], [llvm_v4f32_ty, llvm_i32_ty],
-                            [IntrNoMem, ImmArg<ArgIndex<1>>]>;
+                            [IntrNoMem, IntrHasSideEffects,
+                             ImmArg<ArgIndex<1>>]>;
 
   def int_ppc_altivec_vrfim : ClangBuiltin<"__builtin_altivec_vrfim">,
       DefaultAttrsIntrinsic<[llvm_v4f32_ty], [llvm_v4f32_ty], [IntrNoMem]>;
