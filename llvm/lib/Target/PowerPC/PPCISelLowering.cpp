@@ -247,6 +247,14 @@ PPCTargetLowering::PPCTargetLowering(const PPCTargetMachine &TM,
     setLoadExtAction(ISD::SEXTLOAD, VT, MVT::i8, Expand);
   }
 
+  if (Subtarget.isXbox360()) {
+    // Xenon's signed halfword loads are much slower than LHZ followed by
+    // EXTSH. Expanding keeps the original two-byte memory access and its MMO,
+    // including volatile ordering, and extends in a register instead.
+    setLoadExtAction(ISD::SEXTLOAD, MVT::i32, MVT::i16, Expand);
+    setLoadExtAction(ISD::SEXTLOAD, MVT::i64, MVT::i16, Expand);
+  }
+
   setTruncStoreAction(MVT::f128, MVT::f16, Expand);
   setOperationAction(ISD::FP_TO_FP16, MVT::f128, Expand);
 

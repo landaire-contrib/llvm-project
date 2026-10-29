@@ -1005,8 +1005,10 @@ bool PPCMIPeephole::simplifyCode() {
         MachineInstr *SrcMI = MRI->getVRegDef(NarrowReg);
         unsigned SrcOpcode = SrcMI->getOpcode();
         // If we've used a zero-extending load that we will sign-extend,
-        // just do a sign-extending load.
-        if (SrcOpcode == PPC::LHZ || SrcOpcode == PPC::LHZX) {
+        // just do a sign-extending load. On Xenon, retain LHZ/LHZX plus EXTSH:
+        // LHA/LHAX are slower, so folding would undo the lowering preference.
+        if ((SrcOpcode == PPC::LHZ || SrcOpcode == PPC::LHZX) &&
+            !MF->getSubtarget<PPCSubtarget>().isXbox360()) {
           if (!MRI->hasOneNonDBGUse(SrcMI->getOperand(0).getReg()))
             break;
           // Determine the new opcode. We need to make sure that if the original
