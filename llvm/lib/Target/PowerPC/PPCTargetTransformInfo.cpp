@@ -1170,7 +1170,8 @@ InstructionCost PPCTTIImpl::getPartialReductionCost(
     TTI::TargetCostKind CostKind, std::optional<FastMathFlags> FMF) const {
   InstructionCost Invalid = InstructionCost::getInvalid();
 
-  if (!getST()->hasAltivec())
+  // Xenon has no vmsum instructions.
+  if (!getST()->hasAltivec() || getST()->hasXenonVectorISA())
     return Invalid;
   if (Opcode != Instruction::Add)
     return Invalid;

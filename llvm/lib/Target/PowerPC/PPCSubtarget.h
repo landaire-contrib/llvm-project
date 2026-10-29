@@ -183,6 +183,10 @@ public:
   bool GETTER() const { return ATTRIBUTE; }
 #include "PPCGenSubtargetInfo.inc"
 
+  /// Xenon implements AltiVec without the integer multiply, multiply-sum,
+  /// sum-across and data stream instructions.
+  bool hasXenonVectorISA() const { return isXbox360() && hasAltivec(); }
+
   Align getPlatformStackAlignment() const {
     return Align(16);
   }

@@ -1042,6 +1042,10 @@ PPCTargetLowering::PPCTargetLowering(const PPCTargetMachine &TM,
 
     setOperationAction(ISD::MUL, MVT::v8i16, Legal);
     setOperationAction(ISD::MUL, MVT::v16i8, Custom);
+    // Xenon has no vector integer multiply instructions.
+    if (Subtarget.hasXenonVectorISA())
+      for (MVT VT : {MVT::v4i32, MVT::v8i16, MVT::v16i8})
+        setOperationAction(ISD::MUL, VT, Expand);
 
     setOperationAction(ISD::SCALAR_TO_VECTOR, MVT::v4f32, Custom);
     setOperationAction(ISD::SCALAR_TO_VECTOR, MVT::v4i32, Custom);
@@ -1411,6 +1415,14 @@ PPCTargetLowering::PPCTargetLowering(const PPCTargetMachine &TM,
                               Legal);
     setPartialReduceMLAAction(ISD::PARTIAL_REDUCE_SUMLA, MVT::v4i32, MVT::v16i8,
                               Legal);
+    if (Subtarget.hasXenonVectorISA()) {
+      setOperationAction(ISD::PARTIAL_REDUCE_UMLA, MVT::v16i32, Expand);
+      for (MVT InVT : {MVT::v8i16, MVT::v16i8})
+        setPartialReduceMLAAction({ISD::PARTIAL_REDUCE_UMLA,
+                                   ISD::PARTIAL_REDUCE_SMLA,
+                                   ISD::PARTIAL_REDUCE_SUMLA},
+                                  MVT::v4i32, InVT, Expand);
+    }
   }
 
   if (Subtarget.pairedVectorMemops()) {
@@ -18440,6 +18452,202 @@ static SDValue combineXorSelectCC(SDNode *N, SelectionDAG &DAG) {
       0);
 }
 
+// Xenon lacks the AltiVec integer multiply, multiply-sum and sum-across
+// instructions. Expand their intrinsics into generic nodes (vector integer
+// multiplies are scalarized). The saturating intrinsics set VSCR[SAT] through
+// chained AltiVec saturating instructions, updating *Chain.
+// The intrinsic arguments of N start at operand FirstArg.
+static SDValue expandXenonDroppedIntrinsic(SDNode *N, unsigned IID,
+                                           unsigned FirstArg, const SDLoc &dl,
+                                           SelectionDAG &DAG,
+                                           SDValue *Chain = nullptr) {
+  SmallVector<SDValue, 3> Ops(drop_begin(N->op_values(), FirstArg));
+  auto Splat = [&](MVT VT, int64_t C) {
+    return DAG.getSignedConstant(C, dl, VT);
+  };
+  // Lane K (from the most significant end) of each VT element of V, extended
+  // to the element width.
+  auto Lane = [&](SDValue V, MVT VT, unsigned Bits, unsigned K, bool Signed) {
+    unsigned EltBits = VT.getScalarSizeInBits();
+    V = DAG.getBitcast(VT, V);
+    if (K * Bits)
+      V = DAG.getNode(ISD::SHL, dl, VT, V, Splat(VT, K * Bits));
+    return DAG.getNode(Signed ? ISD::SRA : ISD::SRL, dl, VT, V,
+                       Splat(VT, EltBits - Bits));
+  };
+  auto Add = [&](SDValue A, SDValue B) {
+    return A ? DAG.getNode(ISD::ADD, dl, A.getValueType(), A, B) : B;
+  };
+  // Sum of the products of lanes of A and B, one product per lane.
+  auto MulSum = [&](SDValue A, SDValue B, MVT VT, unsigned Bits, bool SignedA,
+                    bool SignedB, ArrayRef<unsigned> Lanes) {
+    SDValue Sum;
+    for (unsigned K : Lanes)
+      Sum =
+          Add(Sum, DAG.getNode(ISD::MUL, dl, VT, Lane(A, VT, Bits, K, SignedA),
+                               Lane(B, VT, Bits, K, SignedB)));
+    return Sum;
+  };
+  // Keep only the words selected by Mask.
+  auto KeepWords = [&](SDValue V, ArrayRef<int> Mask) {
+    SmallVector<SDValue, 4> Elts;
+    for (int M : Mask)
+      Elts.push_back(DAG.getSignedConstant(M, dl, MVT::i32));
+    return DAG.getNode(ISD::AND, dl, MVT::v4i32, V,
+                       DAG.getBuildVector(MVT::v4i32, dl, Elts));
+  };
+  // A chained AltiVec saturating instruction, which sets VSCR[SAT] as the
+  // expanded intrinsic would.
+  auto SatOp = [&](unsigned SatIID, MVT VT, SDValue A, SDValue B) {
+    assert(Chain && "Saturating intrinsic without a chain");
+    SDValue R =
+        DAG.getNode(ISD::INTRINSIC_W_CHAIN, dl, DAG.getVTList(VT, MVT::Other),
+                    *Chain, DAG.getConstant(SatIID, dl, MVT::i32), A, B);
+    *Chain = R.getValue(1);
+    return R;
+  };
+  // All ones in the words that saturated. The word adds below do not use the
+  // saturating instructions, which set VSCR[SAT] outside the chain.
+  SDValue Sat;
+  auto NoteSat = [&](SDValue Mask) {
+    Sat = Sat ? DAG.getNode(ISD::OR, dl, MVT::v4i32, Sat, Mask) : Mask;
+  };
+  // Return V, setting VSCR[SAT] if a word of Sat is all ones: vpkuwus
+  // saturates exactly then.
+  auto SetSat = [&](SDValue V) {
+    SatOp(Intrinsic::ppc_altivec_vpkuwus, MVT::v8i16, Sat, Sat);
+    return V;
+  };
+  auto AddSat = [&](SDValue A, SDValue B, bool Signed) {
+    MVT VT = MVT::v4i32;
+    SDValue Sum = DAG.getNode(ISD::ADD, dl, VT, A, B);
+    if (!Signed) {
+      // A select would be folded back into a saturating add.
+      SDValue Ovf = DAG.getSetCC(dl, VT, Sum, A, ISD::SETULT);
+      NoteSat(Ovf);
+      return DAG.getNode(ISD::OR, dl, VT, Sum, Ovf);
+    }
+    // Overflow iff A and B have the same sign and Sum the other.
+    SDValue Ovf = DAG.getNode(
+        ISD::SRA, dl, VT,
+        DAG.getNode(ISD::AND, dl, VT, DAG.getNode(ISD::XOR, dl, VT, A, Sum),
+                    DAG.getNode(ISD::XOR, dl, VT, B, Sum)),
+        Splat(VT, 31));
+    NoteSat(Ovf);
+    SDValue Limit = DAG.getNode(ISD::XOR, dl, VT,
+                                DAG.getNode(ISD::SRA, dl, VT, A, Splat(VT, 31)),
+                                Splat(VT, INT32_MAX));
+    return DAG.getSelect(dl, VT, Ovf, Limit, Sum);
+  };
+  // Signed saturating sum of up to five words: add the high and low halves
+  // separately so no partial sum overflows. Only the words selected by Keep
+  // are kept and noted in Sat.
+  auto SatSum = [&](ArrayRef<SDValue> Terms, ArrayRef<int> Keep) {
+    MVT VT = MVT::v4i32;
+    SDValue Hi, Lo;
+    for (SDValue T : Terms) {
+      Hi = Add(Hi, DAG.getNode(ISD::SRA, dl, VT, T, Splat(VT, 16)));
+      Lo = Add(Lo, DAG.getNode(ISD::AND, dl, VT, T, Splat(VT, 0xFFFF)));
+    }
+    Hi = Add(Hi, DAG.getNode(ISD::SRL, dl, VT, Lo, Splat(VT, 16)));
+    SDValue Res = DAG.getNode(
+        ISD::OR, dl, VT, DAG.getNode(ISD::SHL, dl, VT, Hi, Splat(VT, 16)),
+        DAG.getNode(ISD::AND, dl, VT, Lo, Splat(VT, 0xFFFF)));
+    SDValue Over = DAG.getSetCC(dl, VT, Hi, Splat(VT, 0x7FFF), ISD::SETGT);
+    SDValue Under = DAG.getSetCC(dl, VT, Hi, Splat(VT, -0x8000), ISD::SETLT);
+    Res = DAG.getSelect(dl, VT, Over, Splat(VT, INT32_MAX), Res);
+    Res = DAG.getSelect(dl, VT, Under, Splat(VT, INT32_MIN), Res);
+    NoteSat(KeepWords(DAG.getNode(ISD::OR, dl, VT, Over, Under), Keep));
+    return KeepWords(Res, Keep);
+  };
+  auto Shuffle = [&](SDValue V, ArrayRef<int> Mask) {
+    return DAG.getVectorShuffle(MVT::v4i32, dl, V, DAG.getUNDEF(MVT::v4i32),
+                                Mask);
+  };
+  MVT H = MVT::v8i16, W = MVT::v4i32;
+
+  switch (IID) {
+  default:
+    return SDValue();
+  case Intrinsic::ppc_altivec_vmuleub:
+    return MulSum(Ops[0], Ops[1], H, 8, false, false, {0});
+  case Intrinsic::ppc_altivec_vmuloub:
+    return MulSum(Ops[0], Ops[1], H, 8, false, false, {1});
+  case Intrinsic::ppc_altivec_vmulesb:
+    return MulSum(Ops[0], Ops[1], H, 8, true, true, {0});
+  case Intrinsic::ppc_altivec_vmulosb:
+    return MulSum(Ops[0], Ops[1], H, 8, true, true, {1});
+  case Intrinsic::ppc_altivec_vmuleuh:
+    return MulSum(Ops[0], Ops[1], W, 16, false, false, {0});
+  case Intrinsic::ppc_altivec_vmulouh:
+    return MulSum(Ops[0], Ops[1], W, 16, false, false, {1});
+  case Intrinsic::ppc_altivec_vmulesh:
+    return MulSum(Ops[0], Ops[1], W, 16, true, true, {0});
+  case Intrinsic::ppc_altivec_vmulosh:
+    return MulSum(Ops[0], Ops[1], W, 16, true, true, {1});
+  case Intrinsic::ppc_altivec_vmladduhm:
+    return Add(DAG.getNode(ISD::MUL, dl, H, Ops[0], Ops[1]), Ops[2]);
+  case Intrinsic::ppc_altivec_vmsumubm:
+    return Add(MulSum(Ops[0], Ops[1], W, 8, false, false, {0, 1, 2, 3}),
+               Ops[2]);
+  case Intrinsic::ppc_altivec_vmsummbm:
+    return Add(MulSum(Ops[0], Ops[1], W, 8, true, false, {0, 1, 2, 3}), Ops[2]);
+  case Intrinsic::ppc_altivec_vmsumuhm:
+    return Add(MulSum(Ops[0], Ops[1], W, 16, false, false, {0, 1}), Ops[2]);
+  case Intrinsic::ppc_altivec_vmsumshm:
+    return Add(MulSum(Ops[0], Ops[1], W, 16, true, true, {0, 1}), Ops[2]);
+  case Intrinsic::ppc_altivec_vmsumuhs:
+    // Each unsigned product fits in a word.
+    return SetSat(
+        AddSat(AddSat(MulSum(Ops[0], Ops[1], W, 16, false, false, {0}),
+                      MulSum(Ops[0], Ops[1], W, 16, false, false, {1}), false),
+               Ops[2], false));
+  case Intrinsic::ppc_altivec_vmsumshs:
+    return SetSat(
+        SatSum({MulSum(Ops[0], Ops[1], W, 16, true, true, {0}),
+                MulSum(Ops[0], Ops[1], W, 16, true, true, {1}), Ops[2]},
+               {-1, -1, -1, -1}));
+  case Intrinsic::ppc_altivec_vsum4ubs: {
+    SDValue Sum;
+    for (unsigned K = 0; K != 4; ++K)
+      Sum = Add(Sum, Lane(Ops[0], W, 8, K, false));
+    return SetSat(AddSat(Sum, Ops[1], false));
+  }
+  case Intrinsic::ppc_altivec_vsum4sbs:
+  case Intrinsic::ppc_altivec_vsum4shs: {
+    unsigned Bits = IID == Intrinsic::ppc_altivec_vsum4sbs ? 8 : 16;
+    SDValue Sum;
+    for (unsigned K = 0; K != 32 / Bits; ++K)
+      Sum = Add(Sum, Lane(Ops[0], W, Bits, K, true));
+    return SetSat(AddSat(Sum, Ops[1], true));
+  }
+  case Intrinsic::ppc_altivec_vsum2sws:
+    return SetSat(SatSum({Shuffle(Ops[0], {-1, 0, -1, 2}), Ops[0], Ops[1]},
+                         {0, -1, 0, -1}));
+  case Intrinsic::ppc_altivec_vsumsws:
+    return SetSat(SatSum({Shuffle(Ops[0], {-1, -1, -1, 0}),
+                          Shuffle(Ops[0], {-1, -1, -1, 1}),
+                          Shuffle(Ops[0], {-1, -1, -1, 2}), Ops[0], Ops[1]},
+                         {0, 0, 0, -1}));
+  case Intrinsic::ppc_altivec_vmhaddshs:
+  case Intrinsic::ppc_altivec_vmhraddshs: {
+    // Words of the even (K = 0) and odd (K = 1) halfword results, before
+    // saturation.
+    SDValue P[2];
+    for (unsigned K = 0; K != 2; ++K) {
+      P[K] = MulSum(Ops[0], Ops[1], W, 16, true, true, {K});
+      if (IID == Intrinsic::ppc_altivec_vmhraddshs)
+        P[K] = Add(P[K], Splat(W, 0x4000));
+      P[K] = Add(DAG.getNode(ISD::SRA, dl, W, P[K], Splat(W, 15)),
+                 Lane(Ops[2], W, 16, K, true));
+    }
+    return SatOp(Intrinsic::ppc_altivec_vpkswss, H,
+                 DAG.getVectorShuffle(W, dl, P[0], P[1], {0, 4, 1, 5}),
+                 DAG.getVectorShuffle(W, dl, P[0], P[1], {2, 6, 3, 7}));
+  }
+  }
+}
+
 SDValue PPCTargetLowering::PerformDAGCombine(SDNode *N,
                                              DAGCombinerInfo &DCI) const {
   SelectionDAG &DAG = DCI.DAG;
@@ -18892,6 +19100,9 @@ SDValue PPCTargetLowering::PerformDAGCombine(SDNode *N,
     case ISD::INTRINSIC_WO_CHAIN: {
       bool isLittleEndian = Subtarget.isLittleEndian();
       unsigned IID = N->getConstantOperandVal(0);
+      if (Subtarget.hasXenonVectorISA() && DCI.isBeforeLegalize())
+        if (SDValue V = expandXenonDroppedIntrinsic(N, IID, 1, dl, DAG))
+          return V;
       Intrinsic::ID Intr = (isLittleEndian ? Intrinsic::ppc_altivec_lvsr
                                            : Intrinsic::ppc_altivec_lvsl);
       if (IID == Intr && N->getOperand(1)->getOpcode() == ISD::ADD) {
@@ -18971,6 +19182,12 @@ SDValue PPCTargetLowering::PerformDAGCombine(SDNode *N,
 
     break;
   case ISD::INTRINSIC_W_CHAIN:
+    if (Subtarget.hasXenonVectorISA() && DCI.isBeforeLegalize()) {
+      SDValue Chain = N->getOperand(0);
+      if (SDValue V = expandXenonDroppedIntrinsic(
+              N, N->getConstantOperandVal(1), 2, dl, DAG, &Chain))
+        return DCI.CombineTo(N, V, Chain);
+    }
       switch (N->getConstantOperandVal(1)) {
       default:
         break;
@@ -19005,6 +19222,18 @@ SDValue PPCTargetLowering::PerformDAGCombine(SDNode *N,
     }
     break;
   case ISD::INTRINSIC_VOID:
+    // Xenon has no data stream instructions; drop the hints.
+    if (Subtarget.hasXenonVectorISA()) {
+      switch (N->getConstantOperandVal(1)) {
+      case Intrinsic::ppc_altivec_dst:
+      case Intrinsic::ppc_altivec_dstt:
+      case Intrinsic::ppc_altivec_dstst:
+      case Intrinsic::ppc_altivec_dststt:
+      case Intrinsic::ppc_altivec_dss:
+      case Intrinsic::ppc_altivec_dssall:
+        return N->getOperand(0);
+      }
+    }
     // For little endian, VSX stores require generating xxswapd/stxvd2x.
     // Not needed on ISA 3.0 based CPUs since we have a non-permuting store.
     if (Subtarget.needsSwapsForVSXMemOps()) {
