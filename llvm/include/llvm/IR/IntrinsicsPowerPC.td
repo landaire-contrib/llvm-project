@@ -1276,6 +1276,79 @@ def int_ppc_altivec_vlogefp   : PowerPC_Vec_FF_Intrinsic<"vlogefp">;
 def int_ppc_altivec_vrefp     : PowerPC_Vec_FF_Intrinsic<"vrefp">;
 def int_ppc_altivec_vrsqrtefp : PowerPC_Vec_FF_Intrinsic<"vrsqrtefp">;
 
+//===----------------------------------------------------------------------===//
+// Xenon VMX128 Intrinsic Definitions.
+
+let TargetPrefix = "ppc" in {  // All intrinsics start with "llvm.ppc.".
+  // Dot products of elements 0-2 and 0-3, splatted to every element. Products
+  // are truncated and the sum is not exactly rounded.
+  def int_ppc_vmx128_vmsum3fp : ClangBuiltin<"__builtin_vmx128_vmsum3fp">,
+      DefaultAttrsIntrinsic<[llvm_v4f32_ty], [llvm_v4f32_ty, llvm_v4f32_ty],
+                            [IntrNoMem, Commutative]>;
+  def int_ppc_vmx128_vmsum4fp : ClangBuiltin<"__builtin_vmx128_vmsum4fp">,
+      DefaultAttrsIntrinsic<[llvm_v4f32_ty], [llvm_v4f32_ty, llvm_v4f32_ty],
+                            [IntrNoMem, Commutative]>;
+
+  // Result word i = source word (imm >> (6 - 2 * i)) & 3.
+  def int_ppc_vmx128_vpermwi :
+      DefaultAttrsIntrinsic<[llvm_v4i32_ty], [llvm_v4i32_ty, llvm_i32_ty],
+                            [IntrNoMem, ImmArg<ArgIndex<1>>,
+                             Range<ArgIndex<1>, 0, 256>]>;
+  // Rotate operand 1 left by operand 3 words, then replace the words of
+  // operand 0 selected by the mask operand 2 (8 = word 0, 1 = word 3).
+  def int_ppc_vmx128_vrlimi :
+      DefaultAttrsIntrinsic<[llvm_v4i32_ty],
+                            [llvm_v4i32_ty, llvm_v4i32_ty, llvm_i32_ty,
+                             llvm_i32_ty],
+                            [IntrNoMem, ImmArg<ArgIndex<2>>,
+                             Range<ArgIndex<2>, 0, 16>, ImmArg<ArgIndex<3>>,
+                             Range<ArgIndex<3>, 0, 4>]>;
+
+  // D3D pack of operand 1 as data type operand 2, rotated left by operand 4
+  // words and inserted into operand 0 under the mask type operand 3.
+  def int_ppc_vmx128_vpkd3d : ClangBuiltin<"__builtin_vmx128_vpkd3d">,
+      DefaultAttrsIntrinsic<[llvm_v4i32_ty],
+                            [llvm_v4i32_ty, llvm_v4f32_ty, llvm_i32_ty,
+                             llvm_i32_ty, llvm_i32_ty],
+                            [IntrNoMem, ImmArg<ArgIndex<2>>,
+                             Range<ArgIndex<2>, 0, 7>, ImmArg<ArgIndex<3>>,
+                             Range<ArgIndex<3>, 1, 4>, ImmArg<ArgIndex<4>>,
+                             Range<ArgIndex<4>, 0, 4>]>;
+  // D3D unpack of operand 0 as data type operand 1.
+  def int_ppc_vmx128_vupkd3d : ClangBuiltin<"__builtin_vmx128_vupkd3d">,
+      DefaultAttrsIntrinsic<[llvm_v4f32_ty], [llvm_v4i32_ty, llvm_i32_ty],
+                            [IntrNoMem, ImmArg<ArgIndex<1>>,
+                             Range<ArgIndex<1>, 0, 7>]>;
+
+  // Left/right loads and stores: the bytes from the address to the end of
+  // its 16-byte block (left) or from the start of the block to the address
+  // (right), left- or right-justified in the vector; loads zero the rest.
+  def int_ppc_vmx128_lvlx :
+      DefaultAttrsIntrinsic<[llvm_v4i32_ty], [llvm_ptr_ty],
+                            [IntrReadMem, IntrArgMemOnly]>;
+  def int_ppc_vmx128_lvrx :
+      DefaultAttrsIntrinsic<[llvm_v4i32_ty], [llvm_ptr_ty],
+                            [IntrReadMem, IntrArgMemOnly]>;
+  def int_ppc_vmx128_lvlxl :
+      DefaultAttrsIntrinsic<[llvm_v4i32_ty], [llvm_ptr_ty],
+                            [IntrReadMem, IntrArgMemOnly]>;
+  def int_ppc_vmx128_lvrxl :
+      DefaultAttrsIntrinsic<[llvm_v4i32_ty], [llvm_ptr_ty],
+                            [IntrReadMem, IntrArgMemOnly]>;
+  def int_ppc_vmx128_stvlx :
+      DefaultAttrsIntrinsic<[], [llvm_v4i32_ty, llvm_ptr_ty],
+                            [IntrWriteMem, IntrArgMemOnly]>;
+  def int_ppc_vmx128_stvrx :
+      DefaultAttrsIntrinsic<[], [llvm_v4i32_ty, llvm_ptr_ty],
+                            [IntrWriteMem, IntrArgMemOnly]>;
+  def int_ppc_vmx128_stvlxl :
+      DefaultAttrsIntrinsic<[], [llvm_v4i32_ty, llvm_ptr_ty],
+                            [IntrWriteMem, IntrArgMemOnly]>;
+  def int_ppc_vmx128_stvrxl :
+      DefaultAttrsIntrinsic<[], [llvm_v4i32_ty, llvm_ptr_ty],
+                            [IntrWriteMem, IntrArgMemOnly]>;
+}
+
 // Power8 Intrinsics
 // Crypto
 let TargetPrefix = "ppc" in {  // All PPC intrinsics start with "llvm.ppc.".

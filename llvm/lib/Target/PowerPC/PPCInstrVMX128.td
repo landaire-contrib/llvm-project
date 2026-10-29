@@ -591,6 +591,32 @@ def : Pat<(int_ppc_altivec_vupkhsh v8i16:$A), (VUPKHSH128 $A)>;
 def : Pat<(int_ppc_altivec_vupklsh v8i16:$A), (VUPKLSH128 $A)>;
 } // AddedComplexity = 1
 
+// VMX128 intrinsics. vrlimi128 and vpkd3d128 tie their first operand.
+def : Pat<(int_ppc_vmx128_vmsum3fp v4f32:$A, v4f32:$B), (VMSUM3FP128 $A, $B)>;
+def : Pat<(int_ppc_vmx128_vmsum4fp v4f32:$A, v4f32:$B), (VMSUM4FP128 $A, $B)>;
+def : Pat<(int_ppc_vmx128_vpermwi v4i32:$B, u8imm_timm:$P),
+          (VPERMWI128 $B, $P)>;
+def : Pat<(int_ppc_vmx128_vrlimi v4i32:$D, v4i32:$B, u4imm_timm:$M,
+                                 u2imm_timm:$R),
+          (VRLIMI128 $D, $B, $M, $R)>;
+def : Pat<(int_ppc_vmx128_vpkd3d v4i32:$D, v4f32:$B, u3imm_timm:$T,
+                                 u2imm_timm:$M, u2imm_timm:$S),
+          (VPKD3D128 $D, $B, $T, $M, $S)>;
+def : Pat<(int_ppc_vmx128_vupkd3d v4i32:$B, u3imm_timm:$T),
+          (VUPKD3D128 $B, $T)>;
+def : Pat<(int_ppc_vmx128_lvlx ForceXForm:$src), (LVLX128 ForceXForm:$src)>;
+def : Pat<(int_ppc_vmx128_lvrx ForceXForm:$src), (LVRX128 ForceXForm:$src)>;
+def : Pat<(int_ppc_vmx128_lvlxl ForceXForm:$src), (LVLXL128 ForceXForm:$src)>;
+def : Pat<(int_ppc_vmx128_lvrxl ForceXForm:$src), (LVRXL128 ForceXForm:$src)>;
+def : Pat<(int_ppc_vmx128_stvlx v4i32:$S, ForceXForm:$dst),
+          (STVLX128 $S, ForceXForm:$dst)>;
+def : Pat<(int_ppc_vmx128_stvrx v4i32:$S, ForceXForm:$dst),
+          (STVRX128 $S, ForceXForm:$dst)>;
+def : Pat<(int_ppc_vmx128_stvlxl v4i32:$S, ForceXForm:$dst),
+          (STVLXL128 $S, ForceXForm:$dst)>;
+def : Pat<(int_ppc_vmx128_stvrxl v4i32:$S, ForceXForm:$dst),
+          (STVRXL128 $S, ForceXForm:$dst)>;
+
 // Constants. All-zeros and all-ones splats of any element size use the word
 // form, which beats vspltisb/vspltish.
 let AddedComplexity = 10 in {
