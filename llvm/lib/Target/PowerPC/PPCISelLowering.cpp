@@ -973,10 +973,12 @@ PPCTargetLowering::PPCTargetLowering(const PPCTargetMachine &TM,
     setOperationAction(ISD::AND   , MVT::v4i32, Legal);
     setOperationAction(ISD::OR    , MVT::v4i32, Legal);
     setOperationAction(ISD::XOR   , MVT::v4i32, Legal);
-    setOperationAction(ISD::LOAD  , MVT::v4i32, Legal);
+    setOperationAction(ISD::LOAD, MVT::v4i32,
+                       Subtarget.isXbox360() ? Custom : Legal);
     setOperationAction(ISD::SELECT, MVT::v4i32,
                        Subtarget.useCRBits() ? Legal : Expand);
-    setOperationAction(ISD::STORE , MVT::v4i32, Legal);
+    setOperationAction(ISD::STORE, MVT::v4i32,
+                       Subtarget.isXbox360() ? Custom : Legal);
     setOperationAction(ISD::STRICT_FP_TO_SINT, MVT::v4i32, Legal);
     setOperationAction(ISD::STRICT_FP_TO_UINT, MVT::v4i32, Legal);
     setOperationAction(ISD::STRICT_SINT_TO_FP, MVT::v4i32, Legal);
@@ -12609,6 +12611,101 @@ SDValue PPCTargetLowering::LowerVectorLoad(SDValue Op,
   SDValue BasePtr = LN->getBasePtr();
   EVT VT = Op.getValueType();
 
+  if (Subtarget.isXbox360() && Subtarget.hasAltivec() &&
+      VT.isFixedLengthVector() && VT.isByteSized() &&
+      VT.getVectorElementType().isByteSized() &&
+      VT.getFixedSizeInBits() > 128 && VT.getFixedSizeInBits() % 128 != 0) {
+    assert(LN->isUnindexed() && ISD::isNON_EXTLoad(LN) &&
+           !LN->getMemOperand()->isAtomic() &&
+           "Expected an ordinary unindexed vector load");
+
+    // Split memory before type legalization can pack the tail into a scalar
+    // load wider than its known alignment. Padding belongs only to registers.
+    unsigned MemBytes = VT.getFixedSizeInBits() / 8;
+    SmallVector<SDValue, 4> Chunks;
+    SmallVector<SDValue, 4> Chains;
+    MachineFunction &MF = DAG.getMachineFunction();
+    for (unsigned Offset = 0; Offset < MemBytes; Offset += 16) {
+      unsigned ChunkBytes = std::min(16u, MemBytes - Offset);
+      EVT ChunkVT = ChunkBytes == 16 ? EVT(MVT::v4i32)
+                                     : EVT::getVectorVT(*DAG.getContext(),
+                                                        MVT::i8, ChunkBytes);
+      SDValue Address =
+          DAG.getObjectPtrOffset(dl, BasePtr, TypeSize::getFixed(Offset));
+      MachineMemOperand *MMO =
+          MF.getMachineMemOperand(LN->getMemOperand(), Offset, ChunkBytes);
+      SDValue Chunk = DAG.getLoad(ChunkVT, dl, LoadChain, Address, MMO);
+      if (ChunkBytes != 16 || LN->isVolatile())
+        Chunk = LowerVectorLoad(Chunk, DAG);
+      Chains.push_back(Chunk.getValue(1));
+      if (LN->isVolatile())
+        LoadChain = Chunk.getValue(1);
+      if (ChunkBytes != 16)
+        Chunk = DAG.getNode(ISD::INSERT_SUBVECTOR, dl, MVT::v16i8,
+                            DAG.getUNDEF(MVT::v16i8), Chunk,
+                            DAG.getVectorIdxConstant(0, dl));
+      else
+        Chunk = DAG.getNode(ISD::BITCAST, dl, MVT::v16i8, Chunk);
+      Chunks.push_back(Chunk);
+    }
+    EVT JoinedVT =
+        EVT::getVectorVT(*DAG.getContext(), MVT::i8, Chunks.size() * 16);
+    SDValue Value = DAG.getNode(ISD::CONCAT_VECTORS, dl, JoinedVT, Chunks);
+    EVT ByteVT = EVT::getVectorVT(*DAG.getContext(), MVT::i8, MemBytes);
+    Value = DAG.getNode(ISD::EXTRACT_SUBVECTOR, dl, ByteVT, Value,
+                        DAG.getVectorIdxConstant(0, dl));
+    Value = DAG.getNode(ISD::BITCAST, dl, VT, Value);
+    return DAG.getMergeValues({Value, DAG.getTokenFactor(dl, Chains)}, dl);
+  }
+
+  if (Subtarget.isXbox360() && Subtarget.hasAltivec() &&
+      VT.isFixedLengthVector() && VT.isByteSized() &&
+      VT.getVectorElementType().isByteSized() &&
+      (VT.getFixedSizeInBits() < 128 ||
+       (VT == MVT::v4i32 && LN->getAlign() < Align(16)))) {
+    assert(LN->isUnindexed() && ISD::isNON_EXTLoad(LN) &&
+           !LN->getMemOperand()->isAtomic() &&
+           "Expected an ordinary unindexed vector load");
+
+    // Full-width nonvolatile loads normally use the LVX/LVSL/VPERM combine.
+    // For smaller vectors and volatile loads, preserve the original byte
+    // count and alignment before type legalization can choose a packed scalar
+    // access. Such an access may trap on write-combined memory.
+    unsigned MemBytes = VT.getFixedSizeInBits() / 8;
+    unsigned Bytes = std::min<uint64_t>(
+        commonAlignment(LN->getAlign(), MemBytes).value(), 4);
+    MVT EltVT = Bytes == 4 ? MVT::i32 : Bytes == 2 ? MVT::i16 : MVT::i8;
+    unsigned Opcode = Bytes == 4   ? PPCISD::XBOX_LOAD_WORD
+                      : Bytes == 2 ? PPCISD::XBOX_LOAD_HALFWORD
+                                   : PPCISD::XBOX_LOAD_BYTE;
+    SDVTList LoadVTs = DAG.getVTList(MVT::i32, MVT::Other);
+    MVT VecVT = MVT::getVectorVT(EltVT, 16 / Bytes);
+    SmallVector<SDValue, 16> Elements;
+    MachineFunction &MF = DAG.getMachineFunction();
+    for (unsigned Offset = 0; Offset != MemBytes; Offset += Bytes) {
+      SDValue Address =
+          DAG.getObjectPtrOffset(dl, BasePtr, TypeSize::getFixed(Offset));
+      MachineMemOperand *MMO =
+          MF.getMachineMemOperand(LN->getMemOperand(), Offset, Bytes);
+      // Keep the exact width opaque to generic scalar/vector load merging.
+      SDValue Ops[] = {LoadChain, Address};
+      SDValue Part =
+          DAG.getMemIntrinsicNode(Opcode, dl, LoadVTs, Ops, EltVT, MMO);
+      Elements.push_back(Part);
+      LoadChain = Part.getValue(1);
+    }
+    Elements.resize(16 / Bytes, DAG.getUNDEF(MVT::i32));
+    SDValue Value = DAG.getBuildVector(VecVT, dl, Elements);
+    if (MemBytes != 16) {
+      Value = DAG.getNode(ISD::BITCAST, dl, MVT::v16i8, Value);
+      EVT ByteVT = EVT::getVectorVT(*DAG.getContext(), MVT::i8, MemBytes);
+      Value = DAG.getNode(ISD::EXTRACT_SUBVECTOR, dl, ByteVT, Value,
+                          DAG.getVectorIdxConstant(0, dl));
+    }
+    Value = DAG.getNode(ISD::BITCAST, dl, VT, Value);
+    return DAG.getMergeValues({Value, LoadChain}, dl);
+  }
+
   if (VT == MVT::v1024i1 || VT == MVT::v2048i1)
     return LowerDMFVectorLoad(Op, DAG);
 
@@ -12773,6 +12870,50 @@ SDValue PPCTargetLowering::LowerDMFVectorStore(SDValue Op,
   return TF;
 }
 
+// Store only MemBytes from the beginning of a native vector register. Keeping
+// the register width independent of the memory width avoids scalarizing tails
+// merely to narrow and then repad their values during type legalization.
+static SDValue lowerXbox360VectorStoreChunk(const SDLoc &DL, SDValue Chain,
+                                            SDValue Value, SDValue BasePtr,
+                                            MachineMemOperand *MMO,
+                                            unsigned MemBytes,
+                                            SelectionDAG &DAG) {
+  assert(MemBytes && MemBytes <= 16 &&
+         Value.getValueType().getSizeInBits() == 128 &&
+         "Expected a native vector register and an exact nonempty subrange");
+  Value = DAG.getNode(ISD::BITCAST, DL, MVT::v4i32, Value);
+  if (MemBytes == 16 && MMO->getAlign() >= Align(16))
+    return DAG.getStore(Chain, DL, Value, BasePtr, MMO);
+
+  // Partial vector stores cannot be assumed safe for write-combined memory.
+  // Rotate once so the address-selected lanes contain the desired source bytes;
+  // the lane selection wraps correctly across an aligned 16-byte boundary.
+  SDValue Mask = BuildIntrinsicOp(Intrinsic::ppc_altivec_lvsr, BasePtr, DAG, DL,
+                                  MVT::v16i8);
+  SDValue Rotated = BuildIntrinsicOp(Intrinsic::ppc_altivec_vperm, Value, Value,
+                                     Mask, DAG, DL);
+  unsigned Bytes =
+      std::min<uint64_t>(commonAlignment(MMO->getAlign(), MemBytes).value(), 4);
+  MVT EltVT = Bytes == 4 ? MVT::i32 : Bytes == 2 ? MVT::i16 : MVT::i8;
+  MVT VecVT = MVT::getVectorVT(EltVT, 16 / Bytes);
+  Rotated = DAG.getNode(ISD::BITCAST, DL, VecVT, Rotated);
+  SmallVector<SDValue, 16> Stores;
+  MachineFunction &MF = DAG.getMachineFunction();
+  for (unsigned Offset = 0; Offset != MemBytes; Offset += Bytes) {
+    SDValue Address =
+        DAG.getObjectPtrOffset(DL, BasePtr, TypeSize::getFixed(Offset));
+    MachineMemOperand *PartMMO = MF.getMachineMemOperand(MMO, Offset, Bytes);
+    SDValue Ops[] = {Chain, Rotated, Address};
+    SDValue Store =
+        DAG.getMemIntrinsicNode(PPCISD::STORE_VECTOR_ELT, DL,
+                                DAG.getVTList(MVT::Other), Ops, EltVT, PartMMO);
+    Stores.push_back(Store);
+    if (MMO->isVolatile())
+      Chain = Store;
+  }
+  return DAG.getTokenFactor(DL, Stores);
+}
+
 SDValue PPCTargetLowering::LowerVectorStore(SDValue Op,
                                             SelectionDAG &DAG) const {
   SDLoc dl(Op);
@@ -12782,6 +12923,73 @@ SDValue PPCTargetLowering::LowerVectorStore(SDValue Op,
   SDValue Value = SN->getValue();
   SDValue Value2 = SN->getValue();
   EVT StoreVT = Value.getValueType();
+
+  if (Subtarget.isXbox360() && Subtarget.hasAltivec() &&
+      StoreVT.isFixedLengthVector() && StoreVT.isByteSized() &&
+      StoreVT.getVectorElementType().isByteSized() &&
+      StoreVT.getFixedSizeInBits() > 128 &&
+      StoreVT.getFixedSizeInBits() % 128 != 0) {
+    assert(SN->isUnindexed() && !SN->isTruncatingStore() &&
+           !SN->getMemOperand()->isAtomic() &&
+           "Expected an ordinary unindexed vector store");
+
+    unsigned MemBytes = SN->getMemoryVT().getFixedSizeInBits() / 8;
+    EVT ByteVT = EVT::getVectorVT(*DAG.getContext(), MVT::i8, MemBytes);
+    Value = DAG.getNode(ISD::BITCAST, dl, ByteVT, Value);
+    SmallVector<SDValue, 4> Stores;
+    MachineFunction &MF = DAG.getMachineFunction();
+    for (unsigned Offset = 0; Offset < MemBytes; Offset += 16) {
+      unsigned ChunkBytes = std::min(16u, MemBytes - Offset);
+      SDValue Chunk;
+      if (ChunkBytes == 16) {
+        Chunk = DAG.getNode(ISD::EXTRACT_SUBVECTOR, dl, MVT::v16i8, Value,
+                            DAG.getVectorIdxConstant(Offset, dl));
+      } else {
+        // Inserting a non-native wide vector into a larger undef vector
+        // crosses type-legalization splits and forces a stack round-trip.
+        // A shuffle widens its register operands instead. Move the valid
+        // tail bytes to the prefix, then extract a complete native register.
+        SmallVector<int, 32> Mask(MemBytes, -1);
+        for (unsigned I = 0; I != ChunkBytes; ++I)
+          Mask[I] = Offset + I;
+        SDValue Shifted =
+            DAG.getVectorShuffle(ByteVT, dl, Value, DAG.getUNDEF(ByteVT), Mask);
+        Chunk = DAG.getNode(ISD::EXTRACT_SUBVECTOR, dl, MVT::v16i8, Shifted,
+                            DAG.getVectorIdxConstant(0, dl));
+      }
+      SDValue Address =
+          DAG.getObjectPtrOffset(dl, BasePtr, TypeSize::getFixed(Offset));
+      MachineMemOperand *MMO =
+          MF.getMachineMemOperand(SN->getMemOperand(), Offset, ChunkBytes);
+      SDValue Store = lowerXbox360VectorStoreChunk(
+          dl, StoreChain, Chunk, Address, MMO, ChunkBytes, DAG);
+      Stores.push_back(Store);
+      if (SN->isVolatile())
+        StoreChain = Store;
+    }
+    return DAG.getTokenFactor(dl, Stores);
+  }
+
+  if (Subtarget.isXbox360() && Subtarget.hasAltivec() &&
+      StoreVT.isFixedLengthVector() && StoreVT.isByteSized() &&
+      StoreVT.getVectorElementType().isByteSized() &&
+      (StoreVT.getFixedSizeInBits() < 128 ||
+       (StoreVT == MVT::v4i32 && SN->getAlign() < Align(16)))) {
+    assert(SN->isUnindexed() && !SN->isTruncatingStore() &&
+           !SN->getMemOperand()->isAtomic() &&
+           "Expected an ordinary unindexed vector store");
+
+    unsigned MemBytes = SN->getMemoryVT().getFixedSizeInBits() / 8;
+    if (MemBytes != 16) {
+      EVT ByteVT = EVT::getVectorVT(*DAG.getContext(), MVT::i8, MemBytes);
+      Value = DAG.getNode(ISD::BITCAST, dl, ByteVT, Value);
+      Value = DAG.getNode(ISD::INSERT_SUBVECTOR, dl, MVT::v16i8,
+                          DAG.getUNDEF(MVT::v16i8), Value,
+                          DAG.getVectorIdxConstant(0, dl));
+    }
+    return lowerXbox360VectorStoreChunk(dl, StoreChain, Value, BasePtr,
+                                        SN->getMemOperand(), MemBytes, DAG);
+  }
 
   if (StoreVT == MVT::v1024i1 || StoreVT == MVT::v2048i1)
     return LowerDMFVectorStore(Op, DAG);
@@ -18762,6 +18970,17 @@ SDValue PPCTargetLowering::PerformDAGCombine(SDNode *N,
     EVT Op1VT = N->getOperand(1).getValueType();
     unsigned Opcode = N->getOperand(1).getOpcode();
 
+    // Type widening otherwise packs partial vectors and tails into scalar
+    // memory operations without respecting the original vector access
+    // alignment.
+    auto *ST = cast<StoreSDNode>(N);
+    if (Subtarget.isXbox360() && Subtarget.hasAltivec() &&
+        DCI.isBeforeLegalize() && ST->isUnindexed() &&
+        !ST->isTruncatingStore() && Op1VT.isFixedLengthVector() &&
+        Op1VT.isByteSized() && Op1VT.getVectorElementType().isByteSized() &&
+        Op1VT.getFixedSizeInBits() % 128 != 0)
+      return LowerVectorStore(SDValue(N, 0), DAG);
+
     if (Opcode == ISD::FP_TO_SINT || Opcode == ISD::FP_TO_UINT ||
         Opcode == ISD::STRICT_FP_TO_SINT || Opcode == ISD::STRICT_FP_TO_UINT) {
       SDValue Val = combineStoreFPToInt(N, DCI);
@@ -18849,6 +19068,16 @@ SDValue PPCTargetLowering::PerformDAGCombine(SDNode *N,
   case ISD::LOAD: {
     LoadSDNode *LD = cast<LoadSDNode>(N);
     EVT VT = LD->getValueType(0);
+
+    if (Subtarget.isXbox360() && Subtarget.hasAltivec() &&
+        DCI.isBeforeLegalize() && LD->isUnindexed() && ISD::isNON_EXTLoad(LD) &&
+        VT.isFixedLengthVector() && VT.isByteSized() &&
+        VT.getVectorElementType().isByteSized() &&
+        VT.getFixedSizeInBits() % 128 != 0) {
+      SDValue Lowered = LowerVectorLoad(SDValue(N, 0), DAG);
+      DCI.CombineTo(N, Lowered, Lowered.getValue(1));
+      return SDValue(N, 0);
+    }
 
     // For little endian, VSX loads require generating lxvd2x/xxswapd.
     // Not needed on ISA 3.0 based CPUs since we have a non-permuting load.
@@ -18968,7 +19197,8 @@ SDValue PPCTargetLowering::PerformDAGCombine(SDNode *N,
     EVT MemVT = LD->getMemoryVT();
     Type *Ty = MemVT.getTypeForEVT(*DAG.getContext());
     Align ABIAlignment = DAG.getDataLayout().getABITypeAlign(Ty);
-    if (LD->isUnindexed() && VT.isVector() &&
+    if ((!Subtarget.isXbox360() || !LD->isVolatile()) && LD->isUnindexed() &&
+        VT.isVector() &&
         ((Subtarget.hasAltivec() && ISD::isNON_EXTLoad(N) &&
           // P8 and later hardware should just use LOAD.
           !Subtarget.hasP8Vector() &&

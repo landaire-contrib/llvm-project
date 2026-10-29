@@ -30,6 +30,29 @@
 // Altivec transformation functions and pattern fragments.
 //
 
+// Exact naturally-aligned scalar loads used to assemble partial or volatile
+// vectors. Return an i32 with zero extension for byte/halfword accesses, but
+// keep the access width opaque to generic load merging and vector widening.
+def SDT_PPCXboxExactLoad : SDTypeProfile<1, 1, [
+  SDTCisVT<0, i32>, SDTCisPtrTy<1>
+]>;
+def PPCxbox_lbz : SDNode<"PPCISD::XBOX_LOAD_BYTE", SDT_PPCXboxExactLoad,
+                         [SDNPHasChain, SDNPMayLoad, SDNPMemOperand]>;
+def PPCxbox_lhz : SDNode<"PPCISD::XBOX_LOAD_HALFWORD", SDT_PPCXboxExactLoad,
+                         [SDNPHasChain, SDNPMayLoad, SDNPMemOperand]>;
+def PPCxbox_lwz : SDNode<"PPCISD::XBOX_LOAD_WORD", SDT_PPCXboxExactLoad,
+                         [SDNPHasChain, SDNPMayLoad, SDNPMemOperand]>;
+
+// Store an address-selected vector element. Keep all widths in VRRC so one
+// rotated value can feed every store, including byte/halfword forms that have
+// no expanded-register instruction. The MMO describes just the stored element.
+def SDT_PPCStoreVectorElt : SDTypeProfile<0, 2, [
+  SDTCisVec<0>, SDTCisPtrTy<1>
+]>;
+def PPCstore_vector_elt : SDNode<"PPCISD::STORE_VECTOR_ELT",
+                                SDT_PPCStoreVectorElt,
+                                [SDNPHasChain, SDNPMayStore, SDNPMemOperand]>;
+
 // fneg is not legal, and desugared as an xor.
 def desugared_fneg : PatFrag<(ops node:$x), (v4f32 (bitconvert (xor (bitconvert $x), 
                              (int_ppc_altivec_vslw (bitconvert (v16i8 immAllOnesV)), 
@@ -941,6 +964,22 @@ def : Pat<(v4i32 (load ForceXForm:$src)), (LVX ForceXForm:$src)>;
 // Stores.
 def : Pat<(store v4i32:$rS, ForceXForm:$dst),
           (STVX $rS, ForceXForm:$dst)>;
+
+// Exact-width accesses for Xbox 360 partial and volatile vectors.
+let GISelShouldIgnore = 1 in {
+def : Pat<(PPCxbox_lbz DForm:$src), (LBZ DForm:$src)>;
+def : Pat<(PPCxbox_lbz XForm:$src), (LBZX XForm:$src)>;
+def : Pat<(PPCxbox_lhz DForm:$src), (LHZ DForm:$src)>;
+def : Pat<(PPCxbox_lhz XForm:$src), (LHZX XForm:$src)>;
+def : Pat<(PPCxbox_lwz DForm:$src), (LWZ DForm:$src)>;
+def : Pat<(PPCxbox_lwz XForm:$src), (LWZX XForm:$src)>;
+def : Pat<(PPCstore_vector_elt v4i32:$S, ForceXForm:$dst),
+          (STVEWX $S, ForceXForm:$dst)>;
+def : Pat<(PPCstore_vector_elt v8i16:$S, ForceXForm:$dst),
+          (STVEHX $S, ForceXForm:$dst)>;
+def : Pat<(PPCstore_vector_elt v16i8:$S, ForceXForm:$dst),
+          (STVEBX $S, ForceXForm:$dst)>;
+}
 
 // Bit conversions.
 def : Pat<(v16i8 (bitconvert (v8i16 VRRC:$src))), (v16i8 VRRC:$src)>;
