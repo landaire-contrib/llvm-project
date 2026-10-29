@@ -2433,6 +2433,12 @@ bool PPCInstrInfo::optimizeCompareInstr(MachineInstr &CmpInstr, Register SrcReg,
   if (OpC == PPC::FCMPUS || OpC == PPC::FCMPUD)
     return false;
 
+  // The Xbox 360 runs in 32-bit mode, where record forms classify the low word
+  // even when the corresponding doubleword compare uses all 64 bits.
+  if (Subtarget.isXbox360() && (OpC == PPC::CMPD || OpC == PPC::CMPLD ||
+                                OpC == PPC::CMPDI || OpC == PPC::CMPLDI))
+    return false;
+
   // The record forms set the condition register based on a signed comparison
   // with zero (so says the ISA manual). This is not as straightforward as it
   // seems, however, because this is always a 64-bit comparison on PPC64, even
@@ -2841,6 +2847,10 @@ bool PPCInstrInfo::optimizeCmpPostRA(MachineInstr &CmpMI) const {
   // comparison.
   unsigned Opc = CmpMI.getOpcode();
   if (Opc == PPC::CMPLWI || Opc == PPC::CMPLDI)
+    return false;
+
+  if (Subtarget.isXbox360() && (Opc == PPC::CMPD || Opc == PPC::CMPLD ||
+                                Opc == PPC::CMPDI || Opc == PPC::CMPLDI))
     return false;
 
   // The record forms are always based on a 64-bit comparison on PPC64

@@ -179,6 +179,12 @@ bool PPCCTRLoops::processLoop(MachineLoop *ML) {
   if (!Start)
     return false;
 
+  // The Xbox 360 runs in 32-bit mode, where bdnz tests only the low word of
+  // CTR.
+  const auto &ST = Preheader->getParent()->getSubtarget<PPCSubtarget>();
+  if (Start->getOpcode() == PPC::MTCTR8loop && ST.isXbox360())
+    InvalidCTRLoop = true;
+
   // If CTR is live to the preheader, we can not redefine the CTR register.
   if (Preheader->isLiveIn(PPC::CTR) || Preheader->isLiveIn(PPC::CTR8))
     InvalidCTRLoop = true;

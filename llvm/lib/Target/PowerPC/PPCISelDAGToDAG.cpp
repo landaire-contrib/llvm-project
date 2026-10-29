@@ -4055,8 +4055,10 @@ bool PPCDAGToDAGISel::tryIntCompareInGPR(SDNode *N) {
 
   // This optimization will emit code that assumes 64-bit registers
   // so we don't want to run it in 32-bit mode. Also don't run it
-  // on functions that are not to be optimized.
-  if (TM.getOptLevel() == CodeGenOptLevel::None || !TM.isPPC64())
+  // on functions that are not to be optimized. The Xbox 360 has 64-bit
+  // registers but runs in 32-bit mode, where the carry reflects the low word.
+  if (TM.getOptLevel() == CodeGenOptLevel::None || !TM.isPPC64() ||
+      Subtarget->isXbox360())
     return false;
 
   // For POWER10, it is more profitable to use the set boolean extension

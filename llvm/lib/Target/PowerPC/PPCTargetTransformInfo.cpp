@@ -350,6 +350,11 @@ bool PPCTTIImpl::isHardwareLoopProfitable(Loop *L, ScalarEvolution &SE,
                                           AssumptionCache &AC,
                                           TargetLibraryInfo *LibInfo,
                                           HardwareLoopInfo &HWLoopInfo) const {
+  // The Xbox 360 runs in 32-bit mode, where bdnz tests only the low word of
+  // CTR.
+  if (ST->isXbox360())
+    return false;
+
   const PPCTargetMachine &TM = ST->getTargetMachine();
   TargetSchedModel SchedModel;
   SchedModel.init(ST);
