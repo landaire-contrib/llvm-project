@@ -17974,6 +17974,29 @@ SDValue PPCTargetLowering::combineStoreFPToInt(SDNode *N,
   EVT Op1VT = N->getOperand(1).getValueType();
   EVT ResVT = Val.getValueType();
 
+  if (Subtarget.isXbox360()) {
+    auto *ST = cast<StoreSDNode>(N);
+    // Xenon can store the integer word in an FPR without transferring it
+    // through a stack slot and a GPR. STFIWX needs word alignment and does not
+    // perform the unsigned conversion supplied by newer FPCVT instructions.
+    // Leave strict conversions alone: replacing their value must also retain
+    // the original exception chain, which may have users before this store.
+    if (!Subtarget.hasSTFIWX() || Opcode != ISD::FP_TO_SINT ||
+        Op1VT != MVT::i32 || (ResVT != MVT::f32 && ResVT != MVT::f64) ||
+        !ST->isUnindexed() || ST->isTruncatingStore() || ST->isAtomic() ||
+        ST->getAlign() < Align(4))
+      return SDValue();
+
+    Val = convertFPToInt(N->getOperand(1), DAG, Subtarget);
+    SDValue Ops[] = {ST->getChain(), Val, ST->getBasePtr()};
+    // Keep the destination's metadata and flags, including volatile ordering.
+    // STFIWX writes the low word in target byte order; no endian bias is
+    // needed.
+    return DAG.getMemIntrinsicNode(PPCISD::STFIWX, dl,
+                                   DAG.getVTList(MVT::Other), Ops, MVT::i32,
+                                   ST->getMemOperand());
+  }
+
   if (!Subtarget.hasVSX() || !Subtarget.hasFPCVT() || !isTypeLegal(ResVT))
     return SDValue();
 
