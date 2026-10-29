@@ -55,6 +55,13 @@ void SemaPPC::checkAIXMemberAlignment(SourceLocation Loc, const Expr *Arg) {
   }
 }
 
+void SemaPPC::checkXbox360VectorArgs(ArrayRef<const Expr *> Args) {
+  for (const Expr *Arg : Args)
+    if (Arg && Arg->getType()->isVectorType())
+      Diag(Arg->getExprLoc(), diag::err_xbox360_vector_variadic_arg)
+          << Arg->getSourceRange();
+}
+
 static bool isPPC_64Builtin(unsigned BuiltinID) {
   // These builtins only work on PPC 64bit targets.
   switch (BuiltinID) {

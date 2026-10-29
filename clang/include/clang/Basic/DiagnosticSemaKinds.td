@@ -11601,6 +11601,9 @@ def err_ppc_feature_no_runtime_detection : Error<
 def err_ppc_multiple_negative_disableable : Error<
   "only one negative form of runtime-disableable features (vsx, htm) is allowed in 'target_clones'; "
   "'%0' conflicts with '%1'">;
+def err_xbox360_vector_variadic_arg : Error<
+  "vector arguments to variadic or unprototyped functions are not supported "
+  "by the Xbox 360 ABI">;
 
 def err_x86_builtin_invalid_rounding : Error<
   "invalid rounding argument">;

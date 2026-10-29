@@ -4705,6 +4705,9 @@ void Sema::checkCall(NamedDecl *FDecl, const FunctionProtoType *Proto,
       }
     }
   }
+  if (Context.getTargetInfo().getTriple().getOS() == llvm::Triple::Xbox360 &&
+      (!Proto || Proto->isVariadic()) && (!FD || !FD->getBuiltinID()))
+    PPC().checkXbox360VectorArgs(Args);
   if (FD)
     checkLifetimeCaptureBy(FD, IsMemberFunction, ThisArg, Args);
   if (FDecl || Proto) {

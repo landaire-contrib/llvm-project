@@ -36,6 +36,9 @@ public:
   // not passing a struct byval.
   void checkAIXMemberAlignment(SourceLocation Loc, const Expr *Arg);
 
+  // The Xbox 360 ABI passes no vectors to variadic or unprototyped functions.
+  void checkXbox360VectorArgs(ArrayRef<const Expr *> Args);
+
   /// BuiltinPPCMMACall - Check the call to a PPC MMA builtin for validity.
   /// Emit an error and return true on failure; return false on success.
   /// TypeStr is a string containing the type descriptor of the value returned

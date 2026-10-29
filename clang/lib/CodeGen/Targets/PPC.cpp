@@ -673,6 +673,7 @@ public:
 private:
   bool isNarrowInteger(QualType Ty) const;
   llvm::IntegerType *getSmallAggregateType(uint64_t Size) const;
+  bool isPassedAsAggregate(QualType Ty) const;
 };
 
 class Xbox360TargetCodeGenInfo : public TargetCodeGenInfo {
@@ -781,13 +782,26 @@ bool Xbox360ABIInfo::isNarrowInteger(QualType Ty) const {
   return !Ty->isBooleanType() && isPromotableIntegerTypeForABI(Ty);
 }
 
+// 16-byte vectors of float or of integers up to 32 bits use vector registers.
+// Other vectors have no console equivalent and follow the aggregate rules.
+bool Xbox360ABIInfo::isPassedAsAggregate(QualType Ty) const {
+  if (const auto *VT = Ty->getAs<VectorType>()) {
+    QualType EltTy = VT->getElementType();
+    bool IsAltiVecElt = EltTy->isSpecificBuiltinType(BuiltinType::Float) ||
+                        (EltTy->isIntegerType() && !EltTy->isBooleanType() &&
+                         getContext().getTypeSize(EltTy) <= 32);
+    return !IsAltiVecElt || getContext().getTypeSize(Ty) != 128;
+  }
+  return isAggregateTypeForABI(Ty);
+}
+
 ABIArgInfo Xbox360ABIInfo::classifyArgumentType(QualType Ty) const {
   Ty = useFirstFieldIfTransparentUnion(Ty);
 
   if (isNarrowInteger(Ty))
     return ABIArgInfo::getDirect();
 
-  if (isAggregateTypeForABI(Ty)) {
+  if (isPassedAsAggregate(Ty)) {
     if (CGCXXABI::RecordArgABI RAA = getRecordArgABI(Ty, getCXXABI()))
       return getNaturalAlignIndirect(Ty, getDataLayout().getAllocaAddrSpace(),
                                      RAA == CGCXXABI::RAA_DirectInMemory);
@@ -806,7 +820,7 @@ ABIArgInfo Xbox360ABIInfo::classifyArgumentType(QualType Ty) const {
 ABIArgInfo Xbox360ABIInfo::classifyReturnType(QualType RetTy) const {
   if (isNarrowInteger(RetTy))
     return ABIArgInfo::getDirect();
-  if (!isAggregateTypeForABI(RetTy))
+  if (!isPassedAsAggregate(RetTy))
     return DefaultABIInfo::classifyReturnType(RetTy);
 
   uint64_t Size = getContext().getTypeSize(RetTy);
@@ -841,6 +855,9 @@ RValue Xbox360ABIInfo::EmitVAArg(CodeGenFunction &CGF, Address VAListAddr,
         CGF.MakeAddrLValue(Temp.withElementType(CGF.ConvertTypeForMem(Ty)), Ty),
         Slot);
   }
+  // The console compiler passes no vectors to variadic functions.
+  if (Ty->isVectorType())
+    CGF.CGM.ErrorUnsupported(CGF.CurFuncDecl, "xbox360 variadic vector");
   return DefaultABIInfo::EmitVAArg(CGF, VAListAddr, Ty, Slot);
 }
 
