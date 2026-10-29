@@ -158,6 +158,9 @@ public:
   unsigned validateTargetOperandClass(MCParsedAsmOperand &Op,
                                       unsigned Kind) override;
 
+  bool areEqualRegs(const MCParsedAsmOperand &Op1,
+                    const MCParsedAsmOperand &Op2) const override;
+
   const MCExpr *applySpecifier(const MCExpr *E, uint32_t,
                                MCContext &Ctx) override;
 };
@@ -414,6 +417,12 @@ public:
                                   (getImm() & 3) == 0); }
   bool isImmZero() const { return Kind == Immediate && getImm() == 0; }
   bool isRegNumber() const { return Kind == Immediate && isUInt<5>(getImm()); }
+  bool isVRRC128RegNumber() const {
+    return Kind == Immediate && isUInt<7>(getImm());
+  }
+  bool isVRRC0_7RegNumber() const {
+    return Kind == Immediate && isUInt<3>(getImm());
+  }
   bool isACCRegNumber() const {
     return Kind == Immediate && isUInt<3>(getImm());
   }
@@ -520,6 +529,16 @@ public:
   void addRegVRRCOperands(MCInst &Inst, unsigned N) const {
     assert(N == 1 && "Invalid number of operands!");
     Inst.addOperand(MCOperand::createReg(VRegs[getRegNum()]));
+  }
+
+  void addRegVRRC128Operands(MCInst &Inst, unsigned N) const {
+    assert(N == 1 && "Invalid number of operands!");
+    Inst.addOperand(MCOperand::createReg(VR128Regs[getImm()]));
+  }
+
+  void addRegVRRC0_7Operands(MCInst &Inst, unsigned N) const {
+    assert(N == 1 && "Invalid number of operands!");
+    Inst.addOperand(MCOperand::createReg(VRegs[getImm()]));
   }
 
   void addRegVSRCOperands(MCInst &Inst, unsigned N) const {
@@ -1288,6 +1307,16 @@ static bool validateMemOp(const OperandVector &Operands, bool isMemriOp) {
   return true;
 }
 
+// Register operands are parsed as plain numbers, so compare those.
+bool PPCAsmParser::areEqualRegs(const MCParsedAsmOperand &Op1,
+                                const MCParsedAsmOperand &Op2) const {
+  const auto &PPCOp1 = static_cast<const PPCOperand &>(Op1);
+  const auto &PPCOp2 = static_cast<const PPCOperand &>(Op2);
+  return PPCOp1.Kind == PPCOperand::Immediate &&
+         PPCOp2.Kind == PPCOperand::Immediate &&
+         PPCOp1.getImm() == PPCOp2.getImm();
+}
+
 bool PPCAsmParser::matchAndEmitInstruction(SMLoc IDLoc, unsigned &Opcode,
                                            OperandVector &Operands,
                                            MCStreamer &Out, uint64_t &ErrorInfo,
@@ -1325,6 +1354,10 @@ bool PPCAsmParser::matchAndEmitInstruction(SMLoc IDLoc, unsigned &Opcode,
 
     return Error(ErrorLoc, "invalid operand for instruction");
   }
+  case Match_InvalidTiedOperand: {
+    SMLoc ErrorLoc = ((PPCOperand &)*Operands[ErrorInfo]).getStartLoc();
+    return Error(ErrorLoc, "operand must match destination register");
+  }
   }
 
   llvm_unreachable("Implement any new match types added!");
@@ -1347,6 +1380,11 @@ MCRegister PPCAsmParser::matchRegisterName(int64_t &IntVal) {
   MCRegister RegNo = MatchRegisterName(Name);
   if (!RegNo)
     return RegNo;
+
+  // v32-v127 exist only with VMX128.
+  if (RegNo >= PPC::V32 && RegNo <= PPC::V127 &&
+      !getSTI().hasFeature(PPC::FeatureVMX128))
+    return MCRegister();
 
   Name.substr(Name.find_first_of("1234567890")).getAsInteger(10, IntVal);
 

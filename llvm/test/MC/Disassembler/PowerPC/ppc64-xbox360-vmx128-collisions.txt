@@ -1,0 +1,329 @@
+# RUN: llvm-mc --disassemble %s -triple powerpc64-unknown-xbox360-ilp32 -mattr=+vmx128 \
+# RUN:   -ppc-reg-with-percent-prefix | FileCheck --check-prefix=VMX128 %s
+# RUN: llvm-mc --disassemble %s -triple powerpc64-unknown-xbox360-ilp32 -mattr=-vmx128 \
+# RUN:   -ppc-reg-with-percent-prefix | FileCheck --check-prefix=NOVMX128 %s
+
+# VMX128 encodings that are also POWER8-10 instructions decode as VMX128
+# only when it is enabled.
+
+# VMX128: lvsl128 %v50, %r11, %r18
+# NOVMX128: vcmpneb %v18, %v11, %v18
+0x12 0x4b 0x90 0x07
+# VMX128: lvsl128 %v103, %r30, %r4
+# NOVMX128: vinsbvlx %v7, %r30, %v4
+0x10 0xfe 0x20 0x0f
+# VMX128: lvsr128 %v42, %r19, %r19
+# NOVMX128: vcmpneh %v10, %v19, %v19
+0x11 0x53 0x98 0x47
+# VMX128: lvsr128 %v118, %r26, %r13
+# NOVMX128: vinshvlx %v22, %r26, %v13
+0x12 0xda 0x68 0x4f
+# VMX128: lvewx128 %v28, %r23, %r21
+# NOVMX128: vucmprhb %v28, %v23, %v21
+0x13 0x97 0xa8 0x83
+# VMX128: lvewx128 %v80, %r18, %r26
+# NOVMX128: vdivuw %v16, %v18, %v26
+0x12 0x12 0xd0 0x8b
+# VMX128: lvx128 %v108, %r14, %r26
+# NOVMX128: vinsw %v12, %r26, 14
+0x11 0x8e 0xd0 0xcf
+# VMX128: lvx128 %v26, %r10, %r5
+# NOVMX128: vucmprlb %v26, %v10, %v5
+0x13 0x4a 0x28 0xc3
+# VMX128: stvewx128 %v93, %r6, %r18
+# NOVMX128: vdivsw %v29, %v6, %v18
+0x13 0xa6 0x91 0x8b
+# VMX128: stvewx128 %v44, %r29, %r10
+# NOVMX128: vcmpnezw %v12, %v29, %v10
+0x11 0x9d 0x51 0x87
+# VMX128: stvx128 %v124, %r9, %r24
+# NOVMX128: vinsd %v28, %r24, 9
+0x13 0x89 0xc1 0xcf
+# VMX128: stvx128 %v67, %r6, %r8
+# NOVMX128: vdivsd %v3, %v6, %v8
+0x10 0x66 0x41 0xcb
+# VMX128: lvxl128 %v103, %r5, %r14
+# NOVMX128: vinsdlx %v7, %r5, %r14
+0x10 0xe5 0x72 0xcf
+# VMX128: lvxl128 %v79, %r13, %r3
+# NOVMX128: vdiveud %v15, %v13, %v3
+0x11 0xed 0x1a 0xcb
+# VMX128: stvxl128 %v84, %r4, %r10
+# NOVMX128: vdivesd %v20, %v4, %v10
+0x12 0x84 0x53 0xcb
+# VMX128: stvxl128 %v114, %r11, %r15
+# NOVMX128: vinsdrx %v18, %r11, %r15
+0x12 0x4b 0x7b 0xcf
+# VMX128: lvlx128 %v60, %r29, %r9
+# NOVMX128: vcmpneb. %v28, %v29, %v9
+0x13 0x9d 0x4c 0x07
+# VMX128: lvlx128 %v4, %r22, %r10
+# NOVMX128: vabsdub %v4, %v22, %v10
+0x10 0x96 0x54 0x03
+# VMX128: lvrx128 %v6, %r20, %r19
+# NOVMX128: vabsduh %v6, %v20, %v19
+0x10 0xd4 0x9c 0x43
+# VMX128: lvrx128 %v61, %r21, %r30
+# NOVMX128: vcmpneh. %v29, %v21, %v30
+0x13 0xb5 0xf4 0x47
+# VMX128: stvlx128 %v37, %r12, %r8
+# NOVMX128: vcmpnezb. %v5, %v12, %v8
+0x10 0xac 0x45 0x07
+# VMX128: stvrx128 %v63, %r21, %r31
+# NOVMX128: vcmpnezh. %v31, %v21, %v31
+0x13 0xf5 0xfd 0x47
+# VMX128: lvlxl128 %v76, %r28, %r1
+# NOVMX128: vmoduq %v12, %v28, %v1
+0x11 0x9c 0x0e 0x0b
+# VMX128: stvlxl128 %v81, %r13, %r0
+# NOVMX128: vmodsq %v17, %v13, %v0
+0x12 0x2d 0x07 0x0b
+# VMX128: stvlxl128 %v20, 0, %r18
+# NOVMX128: vpopcntb %v20, %v18
+0x12 0x80 0x97 0x03
+# VMX128: stvrxl128 %v6, 0, %r11
+# NOVMX128: vpopcnth %v6, %v11
+0x10 0xc0 0x5f 0x43
+# VMX128: vsldoi128 %v94, %v75, %v118, 6
+# NOVMX128: vextduhvrx %v30, %v11, %v22, %r22
+0x13 0xcb 0xb5 0x9b
+# VMX128: vsldoi128 %v109, %v9, %v53, 14
+# NOVMX128: vextduwvrx %v13, %v9, %v21, %r14
+0x11 0xa9 0xab 0x9d
+# VMX128: vcmpeqfp128 %v3, %v11, %v56
+# NOVMX128: stxvp %vsp34, -16384(%r11)
+0x18 0x6b 0xc0 0x01
+# VMX128: vcmpeqfp128 %v1, %v24, %v31
+# NOVMX128: lxvp %vsp32, -2048(%r24)
+0x18 0x38 0xf8 0x00
+# VMX128: vcmpeqfp128. %v4, %v62, %v14
+# NOVMX128: lxvp %vsp4, 28768(%r30)
+0x18 0x9e 0x70 0x60
+# VMX128: vcmpeqfp128. %v18, %v95, %v59
+# NOVMX128: stxvp %vsp18, -9152(%r31)
+0x1a 0x5f 0xdc 0x41
+# VMX128: vcmpgefp128 %v17, %v38, %v62
+# NOVMX128: stxvp %vsp48, -3936(%r6)
+0x1a 0x26 0xf0 0xa1
+# VMX128: vcmpgefp128 %v23, %v92, %v8
+# NOVMX128: lxvp %vsp54, 17536(%r28)
+0x1a 0xfc 0x44 0x80
+# VMX128: vcmpgefp128. %v27, %v51, %v43
+# NOVMX128: stxvp %vsp58, 22752(%r19)
+0x1b 0x73 0x58 0xe1
+# VMX128: vcmpgefp128. %v29, %v20, %v22
+# NOVMX128: lxvp %vsp60, -20288(%r20)
+0x1b 0xb4 0xb0 0xc0
+# VMX128: vcmpgtfp128 %v26, %v15, %v50
+# NOVMX128: stxvp %vsp26, -28416(%r15)
+0x1b 0x4f 0x91 0x01
+# VMX128: vcmpgtfp128 %v28, %v42, %v30
+# NOVMX128: lxvp %vsp28, -3808(%r10)
+0x1b 0x8a 0xf1 0x20
+# VMX128: vcmpgtfp128. %v9, %v109, %v30
+# NOVMX128: lxvp %vsp40, -2720(%r13)
+0x19 0x2d 0xf5 0x60
+# VMX128: vcmpgtfp128. %v0, %v68, %v48
+# NOVMX128: stxvp %vsp0, -31424(%r4)
+0x18 0x04 0x85 0x41
+# VMX128: vcmpbfp128 %v12, %v23, %v26
+# NOVMX128: lxvp %vsp12, -11904(%r23)
+0x19 0x97 0xd1 0x80
+# VMX128: vcmpbfp128 %v19, %v77, %v60
+# NOVMX128: stxvp %vsp50, -6784(%r13)
+0x1a 0x6d 0xe5 0x81
+# VMX128: vcmpbfp128. %v11, %v48, %v54
+# NOVMX128: stxvp %vsp42, -20000(%r16)
+0x19 0x70 0xb1 0xe1
+# VMX128: vcmpbfp128. %v0, %v57, %v23
+# NOVMX128: lxvp %vsp0, -17952(%r25)
+0x18 0x19 0xb9 0xe0
+# VMX128: vcmpequw128 %v8, %v94, %v23
+# NOVMX128: lxvp %vsp8, -16896(%r30)
+0x19 0x1e 0xbe 0x00
+# VMX128: vcmpequw128 %v2, %v75, %v43
+# NOVMX128: stxvp %vsp2, 24064(%r11)
+0x18 0x4b 0x5e 0x01
+# VMX128: vcmpequw128. %v2, %v101, %v27
+# NOVMX128: lxvp %vsp2, -8608(%r5)
+0x18 0x45 0xde 0x60
+# VMX128: vcmpequw128. %v16, %v71, %v60
+# NOVMX128: stxvp %vsp16, -6592(%r7)
+0x1a 0x07 0xe6 0x41
+# VMX128: vrlw128 %v0, %v108, %v17
+# NOVMX128: lxvp %vsp0, -29584(%r12)
+0x18 0x0c 0x8c 0x70
+# VMX128: vrlw128 %v25, %v17, %v41
+# NOVMX128: stxvp %vsp56, 18512(%r17)
+0x1b 0x31 0x48 0x51
+# VMX128: vslw128 %v20, %v51, %v9
+# NOVMX128: lxvp %vsp20, 18672(%r19)
+0x1a 0x93 0x48 0xf0
+# VMX128: vslw128 %v2, %v50, %v34
+# NOVMX128: stxvp %vsp2, 4336(%r18)
+0x18 0x52 0x10 0xf1
+# VMX128: vsraw128 %v2, %v121, %v13
+# NOVMX128: lxvp %vsp2, 28016(%r25)
+0x18 0x59 0x6d 0x70
+# VMX128: vsraw128 %v11, %v114, %v36
+# NOVMX128: stxvp %vsp42, 9584(%r18)
+0x19 0x72 0x25 0x71
+# VMX128: vsrw128 %v14, %v90, %v54
+# NOVMX128: stxvp %vsp14, -18992(%r26)
+0x19 0xda 0xb5 0xd1
+# VMX128: vsrw128 %v0, %v41, %v5
+# NOVMX128: lxvp %vsp0, 10736(%r9)
+0x18 0x09 0x29 0xf0
+# VMX128: vmaxfp128 %v7, %v40, %v22
+# NOVMX128: lxvp %vsp38, -19808(%r8)
+0x18 0xe8 0xb2 0xa0
+# VMX128: vmaxfp128 %v27, %v24, %v53
+# NOVMX128: stxvp %vsp58, -21888(%r24)
+0x1b 0x78 0xaa 0x81
+# VMX128: vminfp128 %v18, %v31, %v59
+# NOVMX128: stxvp %vsp18, -9536(%r31)
+0x1a 0x5f 0xda 0xc1
+# VMX128: vminfp128 %v26, %v69, %v19
+# NOVMX128: lxvp %vsp26, -24896(%r5)
+0x1b 0x45 0x9e 0xc0
+# VMX128: vmrghw128 %v0, %v23, %v42
+# NOVMX128: stxvp %vsp0, 21248(%r23)
+0x18 0x17 0x53 0x01
+# VMX128: vmrghw128 %v19, %v97, %v21
+# NOVMX128: lxvp %vsp50, -20704(%r1)
+0x1a 0x61 0xaf 0x20
+# VMX128: vmrglw128 %v0, %v9, %v31
+# NOVMX128: lxvp %vsp0, -1216(%r9)
+0x18 0x09 0xfb 0x40
+# VMX128: vmrglw128 %v8, %v44, %v39
+# NOVMX128: stxvp %vsp8, 15200(%r12)
+0x19 0x0c 0x3b 0x61
+# VMX128: vcfpsxws128 %v3, %v24, 26
+# NOVMX128: lxvp %vsp34, -15824(%r26)
+0x18 0x7a 0xc2 0x30
+# VMX128: vcfpsxws128 %v28, %v38, 5
+# NOVMX128: stxvp %vsp28, 12848(%r5)
+0x1b 0x85 0x32 0x31
+# VMX128: vcfpuxws128 %v22, %v51, 14
+# NOVMX128: stxvp %vsp22, -26000(%r14)
+0x1a 0xce 0x9a 0x71
+# VMX128: vcfpuxws128 %v6, %v27, 15
+# NOVMX128: lxvp %vsp6, -9616(%r15)
+0x18 0xcf 0xda 0x70
+# VMX128: vcsxwfp128 %v13, %v3, 26
+# NOVMX128: lxvp %vsp44, 6832(%r26)
+0x19 0xba 0x1a 0xb0
+# VMX128: vcsxwfp128 %v21, %v33, 20
+# NOVMX128: stxvp %vsp52, 2736(%r20)
+0x1a 0xb4 0x0a 0xb1
+# VMX128: vcuxwfp128 %v22, %v46, 9
+# NOVMX128: stxvp %vsp22, 29424(%r9)
+0x1a 0xc9 0x72 0xf1
+# VMX128: vcuxwfp128 %v21, %v13, 25
+# NOVMX128: lxvp %vsp52, 27376(%r25)
+0x1a 0xb9 0x6a 0xf0
+# VMX128: vspltw128 %v29, %v53, 27
+# NOVMX128: stxvp %vsp60, -20688(%r27)
+0x1b 0xbb 0xaf 0x31
+# VMX128: vspltw128 %v23, %v8, 29
+# NOVMX128: lxvp %vsp54, 18224(%r29)
+0x1a 0xfd 0x47 0x30
+# VMX128: vrfim128 %v23, %v54
+# NOVMX128: stxvp %vsp54, -19664(0)
+0x1a 0xe0 0xb3 0x31
+# VMX128: vrfim128 %v28, %v23
+# NOVMX128: lxvp %vsp28, -17616(0)
+0x1b 0x80 0xbb 0x30
+# VMX128: vrfin128 %v13, %v53
+# NOVMX128: stxvp %vsp44, -21648(0)
+0x19 0xa0 0xab 0x71
+# VMX128: vrfin128 %v30, %v30
+# NOVMX128: lxvp %vsp30, -3216(0)
+0x1b 0xc0 0xf3 0x70
+# VMX128: vrfip128 %v2, %v54
+# NOVMX128: stxvp %vsp2, -19536(0)
+0x18 0x40 0xb3 0xb1
+# VMX128: vrfip128 %v29, %v30
+# NOVMX128: lxvp %vsp60, -3152(0)
+0x1b 0xa0 0xf3 0xb0
+# VMX128: vrfiz128 %v1, %v44
+# NOVMX128: stxvp %vsp32, 25584(0)
+0x18 0x20 0x63 0xf1
+# VMX128: vrfiz128 %v7, %v26
+# NOVMX128: lxvp %vsp38, -11280(0)
+0x18 0xe0 0xd3 0xf0
+# VMX128: vupkhsb128 %v22, %v23
+# NOVMX128: lxvp %vsp22, -17536(0)
+0x1a 0xc0 0xbb 0x80
+# VMX128: vupkhsb128 %v25, %v41
+# NOVMX128: stxvp %vsp56, 19328(0)
+0x1b 0x20 0x4b 0x81
+# VMX128: vupklsb128 %v6, %v25
+# NOVMX128: lxvp %vsp6, -13376(0)
+0x18 0xc0 0xcb 0xc0
+# VMX128: vupklsb128 %v30, %v55
+# NOVMX128: stxvp %vsp30, -17472(0)
+0x1b 0xc0 0xbb 0xc1
+# VMX128: vrefp128 %v5, %v21
+# NOVMX128: lxvp %vsp36, -20944(0)
+0x18 0xa0 0xae 0x30
+# VMX128: vrefp128 %v29, %v58
+# NOVMX128: stxvp %vsp60, -10704(0)
+0x1b 0xa0 0xd6 0x31
+# VMX128: vrsqrtefp128 %v31, %v21
+# NOVMX128: lxvp %vsp62, -20880(0)
+0x1b 0xe0 0xae 0x70
+# VMX128: vrsqrtefp128 %v22, %v54
+# NOVMX128: stxvp %vsp22, -18832(0)
+0x1a 0xc0 0xb6 0x71
+# VMX128: vexptefp128 %v23, %v53
+# NOVMX128: stxvp %vsp54, -20816(0)
+0x1a 0xe0 0xae 0xb1
+# VMX128: vexptefp128 %v4, %v17
+# NOVMX128: lxvp %vsp4, -29008(0)
+0x18 0x80 0x8e 0xb0
+# VMX128: vlogefp128 %v8, %v42
+# NOVMX128: stxvp %vsp8, 22256(0)
+0x19 0x00 0x56 0xf1
+# VMX128: vlogefp128 %v0, %v6
+# NOVMX128: lxvp %vsp0, 14064(0)
+0x18 0x00 0x36 0xf0
+# VMX128: vupkhsh128 %v18, %v57
+# NOVMX128: stxvp %vsp18, -12384(0)
+0x1a 0x40 0xcf 0xa1
+# VMX128: vupkhsh128 %v31, %v6
+# NOVMX128: lxvp %vsp62, 14240(0)
+0x1b 0xe0 0x37 0xa0
+# VMX128: vupklsh128 %v30, %v31
+# NOVMX128: lxvp %vsp30, -32(0)
+0x1b 0xc0 0xff 0xe0
+# VMX128: vupklsh128 %v17, %v36
+# NOVMX128: stxvp %vsp48, 10208(0)
+0x1a 0x20 0x27 0xe1
+# VMX128: vspltisw128 %v23, -2
+# NOVMX128: lxvp %vsp54, 1904(%r30)
+0x1a 0xfe 0x07 0x70
+# VMX128: vupkd3d128 %v31, %v16, 7
+# NOVMX128: lxvp %vsp62, -30736(%r28)
+0x1b 0xfc 0x87 0xf0
+# VMX128: vupkd3d128 %v1, %v55, 5
+# NOVMX128: stxvp %vsp32, -16400(%r20)
+0x18 0x34 0xbf 0xf1
+# VMX128: vpermwi128 %v12, %v32, 86
+# NOVMX128: stxvp %vsp12, 656(%r22)
+0x19 0x96 0x02 0x91
+# VMX128: vpermwi128 %v30, %v30, 35
+# NOVMX128: lxvp %vsp30, -3504(%r3)
+0x1b 0xc3 0xf2 0x50
+# VMX128: vpkd3d128 %v4, %v59, 2, 1, 1
+# NOVMX128: stxvp %vsp4, -8624(%r9)
+0x18 0x89 0xde 0x51
+# VMX128: vpkd3d128 %v26, %v12, 2, 3, 2
+# NOVMX128: lxvp %vsp26, 26256(%r11)
+0x1b 0x4b 0x66 0x90
+# VMX128: vrlimi128 %v16, %v21, 10, 0
+# NOVMX128: lxvp %vsp16, -20720(%r10)
+0x1a 0x0a 0xaf 0x10
+# VMX128: vrlimi128 %v26, %v35, 14, 2
+# NOVMX128: stxvp %vsp26, 8080(%r14)
+0x1b 0x4e 0x1f 0x91

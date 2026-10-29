@@ -185,7 +185,10 @@ public:
 
   /// Xenon implements AltiVec without the integer multiply, multiply-sum,
   /// sum-across and data stream instructions.
-  bool hasXenonVectorISA() const { return isXbox360() && hasAltivec(); }
+  /// VMX128 implies a Xenon processor.
+  bool hasXenonVectorISA() const {
+    return hasVMX128() || (isXbox360() && hasAltivec());
+  }
 
   Align getPlatformStackAlignment() const {
     return Align(16);

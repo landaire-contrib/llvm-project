@@ -163,11 +163,13 @@ static std::string computeFSAdditions(StringRef FS, CodeGenOptLevel OL,
       FullFS = "+64bit";
   }
 
+  // VMX128 is a default that user features may override. The xbox360 feature
+  // comes last because the data layout depends on it.
   if (TT.getOS() == Triple::Xbox360) {
     if (!FullFS.empty())
-      FullFS += ",+xbox360";
+      FullFS = "+vmx128," + FullFS + ",+xbox360";
     else
-      FullFS = "+xbox360";
+      FullFS = "+vmx128,+xbox360";
   }
 
   if (OL >= CodeGenOptLevel::Default) {

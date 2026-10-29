@@ -81,6 +81,9 @@ def FeatureFPU       : SubtargetFeature<"fpu","HasFPU","true",
 def FeatureAltivec   : SubtargetFeature<"altivec","HasAltivec", "true",
                                         "Enable Altivec instructions",
                                         [FeatureFPU]>;
+def FeatureVMX128    : SubtargetFeature<"vmx128", "HasVMX128", "true",
+                                        "Enable Xenon VMX128 instructions",
+                                        [FeatureAltivec]>;
 def FeatureSPE       : SubtargetFeature<"spe","HasSPE", "true",
                                         "Enable SPE instructions",
                                         [FeatureHardFloat]>;
@@ -410,6 +413,8 @@ def HasVSX : Predicate<"Subtarget->hasVSX()">;
 def NoP8Vector : Predicate<"!Subtarget->hasP8Vector()">;
 def HasP8Vector : Predicate<"Subtarget->hasP8Vector()">;
 def HasAltivec : Predicate<"Subtarget->hasAltivec()">;
+def HasVMX128 : Predicate<"Subtarget->hasVMX128()">,
+                AssemblerPredicate<(all_of FeatureVMX128), "vmx128">;
 def HasP8Altivec : Predicate<"Subtarget->hasP8Altivec()">;
 def NoP9Vector : Predicate<"!Subtarget->hasP9Vector()">;
 def HasP9Vector : Predicate<"Subtarget->hasP9Vector()">;

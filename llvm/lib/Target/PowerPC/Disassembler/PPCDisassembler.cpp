@@ -137,6 +137,12 @@ static DecodeStatus DecodeVRRCRegisterClass(MCInst &Inst, uint64_t RegNo,
   return decodeRegisterClass(Inst, RegNo, VRegs);
 }
 
+static DecodeStatus DecodeVRRC128RegisterClass(MCInst &Inst, uint64_t RegNo,
+                                               uint64_t Address,
+                                               const MCDisassembler *Decoder) {
+  return decodeRegisterClass(Inst, RegNo, VR128Regs);
+}
+
 static DecodeStatus DecodeVSRCRegisterClass(MCInst &Inst, uint64_t RegNo,
                                             uint64_t Address,
                                             const MCDisassembler *Decoder) {
@@ -359,6 +365,21 @@ static DecodeStatus decodeCRBitMOperand(MCInst &Inst, uint64_t Imm,
 
 #include "PPCGenDisassemblerTables.inc"
 
+// With VMX128, these words belong to VMX128 even where it defines no
+// instruction: all of primaries 5 and 6, and the primary 4 words with bit 27
+// set or with bits 26 and 31 equal to 0 and 1. Later ISA versions reuse them.
+static bool isVMX128Encoding(uint32_t Inst) {
+  switch (Inst >> 26) {
+  case 4:
+    return (Inst & 0x10) || (Inst & 0x21) == 0x01;
+  case 5:
+  case 6:
+    return true;
+  default:
+    return false;
+  }
+}
+
 DecodeStatus PPCDisassembler::getInstruction(MCInst &MI, uint64_t &Size,
                                              ArrayRef<uint8_t> Bytes,
                                              uint64_t Address,
@@ -395,6 +416,18 @@ DecodeStatus PPCDisassembler::getInstruction(MCInst &MI, uint64_t &Size,
 
   // Read the instruction in the proper endianness.
   uint64_t Inst = ReadFunc(Bytes.data());
+
+  // The VMX128 table also holds the Xenon X-forms, which follow the
+  // HasXenonVectorISA assembler predicate.
+  if (STI.hasFeature(PPC::FeatureVMX128) ||
+      (STI.hasFeature(PPC::FeatureXbox360) &&
+       STI.hasFeature(PPC::FeatureAltivec))) {
+    DecodeStatus Result =
+        decodeInstruction(DecoderTableVMX12832, MI, Inst, Address, this, STI);
+    if (Result != MCDisassembler::Fail ||
+        (STI.hasFeature(PPC::FeatureVMX128) && isVMX128Encoding(Inst)))
+      return Result;
+  }
 
   if (STI.hasFeature(PPC::FeatureSPE)) {
     DecodeStatus result =

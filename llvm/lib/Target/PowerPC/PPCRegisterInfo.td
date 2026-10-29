@@ -94,6 +94,12 @@ class VR<VF SubReg, VF SubRegH, string n> : PPCReg<n> {
   let SubRegIndices = [sub_64, sub_64_hi_phony];
 }
 
+// VR128 - One of the VMX128 vector registers v32-v127. Unlike v0-v31 they
+// have no VSX alias and so no sub-registers.
+class VR128<bits<7> num, string n> : PPCReg<n> {
+  let HWEncoding{6-0} = num;
+}
+
 // VSRL - One of the 32 128-bit VSX registers that overlap with the scalar
 // floating-point registers.
 class VSRL<FPR SubReg, FPR SubRegH, string n> : PPCReg<n> {
@@ -204,6 +210,14 @@ let CoveredBySubRegs = 1 in {
     def VSL#Index : VSRL<!cast<FPR>("F"#Index), !cast<FPR>("FH"#Index), "vs"#Index>,
                     DwarfRegAlias<!cast<FPR>("F"#Index)>;
   }
+}
+
+// VMX128 vector registers have no ABI-assigned DWARF numbers. Use the
+// LLVM-private contiguous range 1300 + N, clear of every range PowerPC ABIs
+// assign (up to 1155 and the SPE upper halves at 1200-1231).
+foreach Index = 32-127 in {
+  def V#Index : VR128<Index, "v"#Index>,
+                DwarfRegNum<[!add(Index, 1300), !add(Index, 1300)]>;
 }
 
 // Dummy VSX registers, this defines string: "vs32"-"vs63", and is only used for
@@ -388,6 +402,17 @@ def VRRC : PPCRegisterClassWithSize<[v16i8,v8i16,v4i32,v2i64,v1i128,v4f32,v2f64,
                   V12, V13, V14, V15, V16, V17, V18, V19, V31, V30,
                   V29, V28, V27, V26, V25, V24, V23, V22, V21, V20), 128>;
 
+// All vector registers VMX128 instructions can name: v0-v31 in VRRC order,
+// then v32-v63, then v127 down to v64 (the registers the Xbox 360 convention
+// preserves across calls). Until codegen handles v32-v127 the class is
+// untyped and not allocatable, so it takes no part in register allocation,
+// pressure sets, inline asm constraints or representative class choice.
+def VRRC128 : PPCRegisterClassWithSize<[untyped], 128,
+                (add VRRC, (sequence "V%u", 32, 63),
+                     (sequence "V%u", 127, 64)), 128> {
+  let isAllocatable = 0;
+}
+
 // VSX register classes (the allocation order mirrors that of the corresponding
 // subregister classes).
 def VSLRC : PPCRegisterClassWithSize<[v4i32,v4f32,v2f64,v2i64], 128,
@@ -492,6 +517,17 @@ defm F8RC : PPCRegOperand<"isRegNumber">;
 defm F4RC : PPCRegOperand<"isRegNumber">;
 defm FpRC : PPCRegOperand<"isEvenRegNumber", "fpairrc">;
 defm VRRC : PPCRegOperand<"isRegNumber">;
+defm VRRC128 : PPCRegOperand<"isVRRC128RegNumber">;
+
+// The permute control of vperm128 is a 3-bit field naming v0-v7.
+def PPCRegVRRC0_7AsmOperand : AsmOperandClass {
+  let Name = "RegVRRC0_7";
+  let PredicateMethod = "isVRRC0_7RegNumber";
+}
+def vrrc0_7 : RegisterOperand<VRRC> {
+  let ParserMatchClass = PPCRegVRRC0_7AsmOperand;
+}
+
 defm VSRC : PPCRegOperand<"isVSRegNumber">;
 defm VFRC : PPCRegOperand<"isRegNumber">;
 defm VSFRC : PPCRegOperand<"isVSRegNumber">;
