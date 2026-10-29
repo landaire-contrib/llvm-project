@@ -206,6 +206,11 @@ bool SemaPPC::CheckPPCBuiltinFunctionCall(const TargetInfo &TI,
     // Restrict Arg2 constant range (0–1)
     return SemaRef.BuiltinConstantArgRange(TheCall, 2, 0, 1);
   }
+  case PPC::BI__builtin_altivec_vcfux:
+  case PPC::BI__builtin_altivec_vcfsx:
+  case PPC::BI__builtin_altivec_vctsxs:
+  case PPC::BI__builtin_altivec_vctuxs:
+    return SemaRef.BuiltinConstantArgRange(TheCall, 1, 0, 31);
   case PPC::BI__builtin_altivec_crypto_vshasigmaw:
   case PPC::BI__builtin_altivec_crypto_vshasigmad:
     return SemaRef.BuiltinConstantArgRange(TheCall, 1, 0, 1) ||
