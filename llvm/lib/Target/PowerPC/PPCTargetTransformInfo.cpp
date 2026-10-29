@@ -517,6 +517,8 @@ PPCTTIImpl::getRegisterBitWidth(TargetTransformInfo::RegisterKind K) const {
 }
 
 unsigned PPCTTIImpl::getCacheLineSize() const {
+  if (ST->isXbox360())
+    return 128;
   // Starting with P7 we have a cache line size of 128.
   unsigned Directive = ST->getCPUDirective();
   // Assume that Future CPU has the same cache line size as the others.
@@ -535,6 +537,10 @@ unsigned PPCTTIImpl::getPrefetchDistance() const {
 
 unsigned PPCTTIImpl::getMaxInterleaveFactor(ElementCount VF,
                                             bool HasUnorderedReductions) const {
+  // Xenon vector arithmetic has twelve-cycle latency and single issue.
+  if (ST->hasXenonVectorISA() && VF.isVector())
+    return 12;
+
   unsigned Directive = ST->getCPUDirective();
   // The 440 has no SIMD support, but floating-point instructions
   // have a 5-cycle latency, so unroll by 5x for latency hiding.
@@ -659,6 +665,43 @@ InstructionCost PPCTTIImpl::getCastInstrCost(unsigned Opcode, Type *Dst,
                                              TTI::TargetCostKind CostKind,
                                              const Instruction *I) const {
   assert(TLI->InstructionOpcodeToISD(Opcode) && "Invalid opcode");
+
+  if (ST->isXbox360() && !ST->useSoftFloat() &&
+      (CostKind == TTI::TCK_RecipThroughput || CostKind == TTI::TCK_CodeSize)) {
+    auto *DstVT = dyn_cast<FixedVectorType>(Dst);
+    auto *SrcVT = dyn_cast<FixedVectorType>(Src);
+    if (ST->hasAltivec() && DstVT && SrcVT &&
+        DstVT->getNumElements() == SrcVT->getNumElements() &&
+        DstVT->getNumElements() % 4 == 0) {
+      bool ToInt =
+          (Opcode == Instruction::FPToSI || Opcode == Instruction::FPToUI) &&
+          SrcVT->getElementType()->isFloatTy() &&
+          DstVT->getElementType()->isIntegerTy(32);
+      bool ToFloat =
+          (Opcode == Instruction::SIToFP || Opcode == Instruction::UIToFP) &&
+          SrcVT->getElementType()->isIntegerTy(32) &&
+          DstVT->getElementType()->isFloatTy();
+      if (ToInt || ToFloat)
+        return DstVT->getNumElements() / 4;
+    }
+    if ((Opcode == Instruction::FPToSI || Opcode == Instruction::FPToUI) &&
+        (Src->isFloatTy() || Src->isDoubleTy()) && Dst->isIntegerTy(32)) {
+      // A signed conversion stored directly with STFIWX needs no bank transfer.
+      if (Opcode == Instruction::FPToSI && ST->hasSTFIWX() && I &&
+          I->getOpcode() == Opcode && I->getType() == Dst && I->hasOneUse())
+        if (const auto *Store = dyn_cast<StoreInst>(*I->user_begin()))
+          if (Store->getValueOperand() == I && !Store->isAtomic() &&
+              Store->getAlign() >= Align(4))
+            return 1;
+      return 3;
+    }
+    if ((Opcode == Instruction::SIToFP || Opcode == Instruction::UIToFP) &&
+        Src->isIntegerTy(32) && (Dst->isFloatTy() || Dst->isDoubleTy())) {
+      // Unsigned conversion constructs a biased double in the stack slot.
+      unsigned Cost = Opcode == Instruction::SIToFP ? 4 : 7;
+      return Cost + Dst->isFloatTy();
+    }
+  }
 
   InstructionCost CostFactor = vectorCostAdjustmentFactor(Opcode, Dst, Src);
   if (!CostFactor.isValid())
@@ -799,15 +842,51 @@ InstructionCost PPCTTIImpl::getMemoryOpCost(unsigned Opcode, Type *Src,
 
   InstructionCost Cost =
       BaseT::getMemoryOpCost(Opcode, Src, Alignment, AddressSpace, CostKind);
+  bool IsAltivecType =
+      ST->hasAltivec() && (LT.second == MVT::v16i8 || LT.second == MVT::v8i16 ||
+                           LT.second == MVT::v4i32 || LT.second == MVT::v4f32);
+  const auto *VT = dyn_cast<FixedVectorType>(Src);
+  const auto *Load = dyn_cast_or_null<LoadInst>(I);
+  if (ST->isXbox360() && IsAltivecType && VT &&
+      (VT->getElementType()->isIntegerTy(8) ||
+       VT->getElementType()->isIntegerTy(16) ||
+       VT->getElementType()->isIntegerTy(32) ||
+       VT->getElementType()->isFloatTy()) &&
+      (!Load || !Load->isVolatile()) &&
+      (CostKind == TTI::TCK_RecipThroughput || CostKind == TTI::TCK_CodeSize)) {
+    bool ForSize = CostKind == TTI::TCK_CodeSize;
+    uint64_t MemBits = VT->getPrimitiveSizeInBits().getFixedValue();
+    unsigned Width = std::min<uint64_t>(Alignment.value(), 4);
+    unsigned FullCost;
+    if (Alignment >= Align(16))
+      FullCost = 1;
+    else if (Opcode == Instruction::Load)
+      // Two aligned loads, LVSL, VPERM, and an address constant for size.
+      FullCost = ForSize ? 5 : 4;
+    else {
+      // LVSR and VPERM rotate the source for alignment-sized element stores.
+      unsigned Stores = 16 / Width;
+      FullCost = ForSize ? 2 * Stores + 1 : Stores + 2;
+    }
+    InstructionCost XboxCost = InstructionCost(MemBits / 128) * FullCost;
+    if (unsigned TailBytes = (MemBits % 128) / 8) {
+      Width =
+          std::min<uint64_t>(commonAlignment(Alignment, TailBytes).value(), 4);
+      unsigned Chunks = TailBytes / Width;
+      // Partial loads assemble a padded vector through an aligned stack slot.
+      if (Opcode == Instruction::Load)
+        XboxCost += 2 * Chunks + 1;
+      else
+        XboxCost += ForSize ? 2 * Chunks + 1 : Chunks + 2;
+    }
+    return XboxCost;
+  }
   // TODO: Handle other cost kinds.
   if (CostKind != TTI::TCK_RecipThroughput)
     return Cost;
 
   Cost *= CostFactor;
 
-  bool IsAltivecType = ST->hasAltivec() &&
-                       (LT.second == MVT::v16i8 || LT.second == MVT::v8i16 ||
-                        LT.second == MVT::v4i32 || LT.second == MVT::v4f32);
   bool IsVSXType = ST->hasVSX() &&
                    (LT.second == MVT::v2f64 || LT.second == MVT::v2i64);
 
