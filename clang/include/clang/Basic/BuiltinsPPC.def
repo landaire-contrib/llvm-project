@@ -91,6 +91,9 @@
 #undef __builtin_vsx_xvmaddasp
 #endif
 
+// Xbox 360 processor control region. This is not a stable thread pointer.
+BUILTIN(__builtin_ppc_get_pcr, "Ui", "")
+
 // XL Compatibility built-ins
 BUILTIN(__builtin_ppc_popcntb, "ULiULi", "")
 BUILTIN(__builtin_ppc_poppar4, "iUi", "")

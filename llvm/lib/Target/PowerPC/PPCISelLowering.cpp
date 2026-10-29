@@ -20356,6 +20356,20 @@ SDValue PPCTargetLowering::LowerFRAMEADDR(SDValue Op,
   return FrameAddr;
 }
 
+void PPCTargetLowering::finalizeLowering(MachineFunction &MF) const {
+  if (Subtarget.isXbox360()) {
+    // A call may migrate the thread and replace the processor's PCR. A
+    // regmask alone does not stop MRI from treating a reserved register
+    // without explicit definitions as constant.
+    for (MachineBasicBlock &MBB : MF)
+      for (MachineInstr &MI : MBB)
+        if (MI.isCall())
+          MI.addOperand(MF, MachineOperand::CreateReg(PPC::X13, /*isDef=*/true,
+                                                      /*isImp=*/true));
+  }
+  TargetLoweringBase::finalizeLowering(MF);
+}
+
 #define GET_REGISTER_MATCHER
 #include "PPCGenAsmMatcher.inc"
 

@@ -327,6 +327,8 @@ namespace llvm {
     SDValue BuildSDIVPow2(SDNode *N, const APInt &Divisor, SelectionDAG &DAG,
                           SmallVectorImpl<SDNode *> &Created) const override;
 
+    void finalizeLowering(MachineFunction &MF) const override;
+
     Register getRegisterByName(const char* RegName, LLT VT,
                                const MachineFunction &MF) const override;
 
