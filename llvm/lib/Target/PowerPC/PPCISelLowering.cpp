@@ -899,8 +899,7 @@ PPCTargetLowering::PPCTargetLowering(const PPCTargetMachine &TM,
       setOperationAction(ISD::SELECT, VT, Promote);
       AddPromotedToType (ISD::SELECT, VT, MVT::v4i32);
       setOperationAction(ISD::VSELECT, VT, Legal);
-      setOperationAction(ISD::SELECT_CC, VT, Promote);
-      AddPromotedToType (ISD::SELECT_CC, VT, MVT::v4i32);
+      setOperationAction(ISD::SELECT_CC, VT, Custom);
       setOperationAction(ISD::STORE, VT, Promote);
       AddPromotedToType (ISD::STORE, VT, MVT::v4i32);
 
@@ -8249,6 +8248,15 @@ SDValue PPCTargetLowering::LowerSELECT_CC(SDValue Op, SelectionDAG &DAG) const {
   SDValue LHS = Op.getOperand(0), RHS = Op.getOperand(1);
   SDValue TV  = Op.getOperand(2), FV  = Op.getOperand(3);
   SDLoc dl(Op);
+
+  // A vector select_cc is a compare and a select. Promoting it to v4i32 would
+  // bitcast the compared values too.
+  if (ResVT.isVector()) {
+    EVT CCVT =
+        getSetCCResultType(DAG.getDataLayout(), *DAG.getContext(), CmpVT);
+    return DAG.getSelect(dl, ResVT, DAG.getSetCC(dl, CCVT, LHS, RHS, CC), TV,
+                         FV, Op->getFlags());
+  }
 
   // Without power9-vector, we don't have native instruction for f128 comparison.
   // Following transformation to libcall is needed for setcc:
