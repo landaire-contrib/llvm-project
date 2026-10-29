@@ -697,7 +697,8 @@ namespace llvm {
                           const SmallVectorImpl<ISD::OutputArg> &Outs,
                           const SmallVectorImpl<ISD::InputArg> &Ins,
                           const Function *CallerFunc,
-                          bool isCalleeExternalSymbol) const;
+                          bool isCalleeExternalSymbol,
+                          MachineFunction *MF = nullptr) const;
 
     SDValue EmitTailCallLoadFPAndRetAddr(SelectionDAG &DAG, int SPDiff,
                                          SDValue Chain, SDValue &LROpOut,

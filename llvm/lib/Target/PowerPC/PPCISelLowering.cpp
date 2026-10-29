@@ -6099,14 +6099,65 @@ bool PPCTargetLowering::supportsTailCallFor(const CallBase *CB) const {
                           false /*isCalleeExternalSymbol*/);
 }
 
+// Unlike guaranteed fastcc tail calls, ordinary Xbox C sibling calls must
+// preserve the incoming stack pointer and the caller-owned parameter area.
+static bool isEligibleForXbox360SCO(const GlobalValue *CalleeGV,
+                                    const CallBase *CB, const Function *Caller,
+                                    const TargetMachine &TM) {
+  if (!EnableSCO || !CB || CB->getCallingConv() != CallingConv::C ||
+      Caller->getCallingConv() != CallingConv::C ||
+      CB->getFunctionType()->isVarArg() || Caller->isVarArg() ||
+      !isFunctionGlobalAddress(CalleeGV))
+    return false;
+
+  // Byval arguments can refer to this frame, and Xbox sret functions must
+  // return their own hidden result pointer in r3 after the call.
+  if (CB->hasByValArgument() || CB->hasStructRetAttr() ||
+      Caller->getAttributes().hasAttrSomewhere(Attribute::ByVal) ||
+      Caller->hasStructRetAttr())
+    return false;
+
+  // A PLT call may need the current function's PIC base after its epilogue
+  // has restored the incoming value. Direct non-preemptable calls do not.
+  return TM.getRelocationModel() != Reloc::PIC_ ||
+         TM.shouldAssumeDSOLocal(CalleeGV);
+}
+
 bool PPCTargetLowering::isEligibleForTCO(
     const GlobalValue *CalleeGV, CallingConv::ID CalleeCC,
     CallingConv::ID CallerCC, const CallBase *CB, bool isVarArg,
     const SmallVectorImpl<ISD::OutputArg> &Outs,
     const SmallVectorImpl<ISD::InputArg> &Ins, const Function *CallerFunc,
-    bool isCalleeExternalSymbol) const {
+    bool isCalleeExternalSymbol, MachineFunction *MF) const {
   if (Subtarget.useLongCalls() && !(CB && CB->isMustTailCall()))
     return false;
+
+  if (Subtarget.isXbox360() && CalleeCC == CallingConv::C &&
+      CallerCC == CallingConv::C) {
+    // Queries without a MachineFunction cannot check legalized argument
+    // locations or the available incoming parameter area.
+    if (!MF || isVarArg ||
+        !isEligibleForXbox360SCO(CalleeGV, CB, CallerFunc,
+                                 getTargetMachine()) ||
+        any_of(Outs, [](const ISD::OutputArg &Arg) {
+          return Arg.Flags.isByVal() || Arg.Flags.isSRet() ||
+                 !isSupportedXbox360Argument(Arg.Flags, Arg.VT, Arg.OrigTy,
+                                             /*IsVarArgCall=*/false);
+        }))
+      return false;
+
+    SmallVector<CCValAssign, 16> ArgLocs;
+    CCState CCInfo(CalleeCC, false, *MF, ArgLocs, CallerFunc->getContext());
+    CCInfo.AllocateStack(Subtarget.getFrameLowering()->getLinkageSize() + 64,
+                         Align(8));
+    CCInfo.AnalyzeCallOperands(Outs, CC_PPC32_SVR4);
+    // Do not overwrite incoming stack arguments, even when they appear to
+    // occupy the same slots. Register arguments can also require backing
+    // slots, which must fit in the caller-provided parameter area.
+    return CCInfo.getStackSize() <=
+               MF->getInfo<PPCFunctionInfo>()->getMinReservedArea() &&
+           all_of(ArgLocs, [](const CCValAssign &VA) { return VA.isRegLoc(); });
+  }
 
   if (Subtarget.is64BitELFABI())
     return IsEligibleForTailCallOptimization_64SVR4(
@@ -6142,7 +6193,7 @@ PPCTargetLowering::LowerCall(TargetLowering::CallLoweringInfo &CLI,
 
     isTailCall =
         isEligibleForTCO(GV, CallConv, CallerCC, CB, isVarArg, Outs, Ins,
-                         &(MF.getFunction()), IsCalleeExternalSymbol);
+                         &(MF.getFunction()), IsCalleeExternalSymbol, &MF);
     if (isTailCall) {
       ++NumTailCalls;
       if (!getTargetMachine().Options.GuaranteedTailCallOpt)
@@ -6299,13 +6350,17 @@ SDValue PPCTargetLowering::LowerCall_32SVR4(
     NumBytes = CCByValInfo.getStackSize();
   }
 
-  // Calculate by how many bytes the stack has to be adjusted in case of tail
-  // call optimization.
-  int SPDiff = CalculateTailCallSPDiff(DAG, IsTailCall, NumBytes);
+  const bool IsSibCall =
+      IsTailCall && Subtarget.isXbox360() && CallConv == CallingConv::C;
+  // C sibling calls retain the incoming stack pointer even when their caller
+  // has a larger parameter area. Only guaranteed fastcc calls may move it.
+  int SPDiff =
+      IsSibCall ? 0 : CalculateTailCallSPDiff(DAG, IsTailCall, NumBytes);
 
   // Adjust the stack pointer for the new arguments...
   // These operations are automatically eliminated by the prolog/epilog pass
-  Chain = DAG.getCALLSEQ_START(Chain, NumBytes, 0, dl);
+  if (!IsSibCall)
+    Chain = DAG.getCALLSEQ_START(Chain, NumBytes, 0, dl);
   SDValue CallSeqStart = Chain;
 
   // Load the return address and frame pointer so it can be moved somewhere else
@@ -6512,7 +6567,7 @@ SDValue PPCTargetLowering::LowerCall_32SVR4(
     InGlue = Chain.getValue(1);
   }
 
-  if (IsTailCall)
+  if (IsTailCall && !IsSibCall)
     PrepareTailCall(DAG, InGlue, Chain, dl, SPDiff, NumBytes, LROp, FPOp,
                     TailCallArguments);
 
@@ -21582,6 +21637,11 @@ SDValue PPCTargetLowering::combineFMALike(SDNode *N,
 }
 
 bool PPCTargetLowering::mayBeEmittedAsTailCall(const CallInst *CI) const {
+  if (Subtarget.isXbox360())
+    return CI->isTailCall() && !Subtarget.useLongCalls() &&
+           isEligibleForXbox360SCO(CI->getCalledFunction(), CI, CI->getCaller(),
+                                   getTargetMachine());
+
   // Only duplicate to increase tail-calls for the 64bit SysV ABIs.
   if (!Subtarget.is64BitELFABI())
     return false;
