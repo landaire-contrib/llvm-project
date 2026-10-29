@@ -45,6 +45,8 @@ bool PPCTargetInfo::handleTargetFeatures(std::vector<std::string> &Features,
   for (const auto &Feature : Features) {
     if (Feature == "+altivec") {
       HasAltivec = true;
+    } else if (Feature == "+vmx128") {
+      HasVMX128 = true;
     } else if (Feature == "+vsx") {
       HasVSX = true;
     } else if (Feature == "+power8-vector") {
@@ -403,6 +405,8 @@ void PPCTargetInfo::getTargetDefines(const LangOptions &Opts,
     Builder.defineMacro("__VEC__", "10206");
     Builder.defineMacro("__ALTIVEC__");
   }
+  if (HasVMX128)
+    Builder.defineMacro("__VMX128__");
   if (HasSPE)
     Builder.defineMacro("__SPE__");
   if (HasSPE || FloatABI == SoftFloat)
@@ -504,6 +508,7 @@ static bool ppcUserFeaturesCheck(DiagnosticsEngine &Diags,
     Found |= FindVSXSubfeature("+crypto", "-mcrypto", "-msoft-float");
     Found |= FindVSXSubfeature("+power10-vector", "-mpower10-vector",
                                "-msoft-float");
+    Found |= FindVSXSubfeature("+vmx128", "-mvmx128", "-msoft-float");
   }
   if (Found)
     return false;
@@ -514,6 +519,20 @@ static bool ppcUserFeaturesCheck(DiagnosticsEngine &Diags,
     Diags.Report(diag::err_opt_not_valid_with_opt) << "-mvsx"
                                                    << "-mno-altivec";
     return false;
+  }
+
+  // VMX128 extends AltiVec and excludes VSX.
+  if (llvm::is_contained(FeaturesVec, "+vmx128")) {
+    if (llvm::is_contained(FeaturesVec, "-altivec")) {
+      Diags.Report(diag::err_opt_not_valid_with_opt) << "-mvmx128"
+                                                     << "-mno-altivec";
+      return false;
+    }
+    if (llvm::is_contained(FeaturesVec, "+vsx")) {
+      Diags.Report(diag::err_opt_not_valid_with_opt) << "-mvmx128"
+                                                     << "-mvsx";
+      return false;
+    }
   }
 
   // vsx was not explicitly turned off.
@@ -618,6 +637,7 @@ bool PPCTargetInfo::hasFeature(StringRef Feature) const {
   return llvm::StringSwitch<bool>(Feature)
       .Case("powerpc", true)
       .Case("altivec", HasAltivec)
+      .Case("vmx128", HasVMX128)
       .Case("vsx", HasVSX)
       .Case("power8-vector", HasP8Vector)
       .Case("crypto", HasP8Crypto)
@@ -653,6 +673,13 @@ void PPCTargetInfo::setFeatureEnabled(llvm::StringMap<bool> &Features,
                              .Default(false);
     if (FeatureHasVSX)
       Features["vsx"] = Features["altivec"] = true;
+    if (FeatureHasVSX && Features.lookup("vmx128"))
+      Features["vmx128"] = false;
+    if (Name == "vmx128") {
+      Features["altivec"] = true;
+      if (Features.lookup("vsx"))
+        setFeatureEnabled(Features, "vsx", false);
+    }
     if (Name == "power9-vector")
       Features["power8-vector"] = true;
     else if (Name == "power10-vector")
@@ -671,6 +698,8 @@ void PPCTargetInfo::setFeatureEnabled(llvm::StringMap<bool> &Features,
     if ((Name == "altivec") || (Name == "vsx") || (Name == "hard-float")) {
       if (Name != "vsx")
         Features["altivec"] = Features["crypto"] = false;
+      if (Name != "vsx" && Features.lookup("vmx128"))
+        Features["vmx128"] = false;
       Features["vsx"] = Features["direct-move"] = Features["power8-vector"] =
           Features["float128"] = Features["power9-vector"] =
               Features["paired-vector-memops"] = Features["mma"] =

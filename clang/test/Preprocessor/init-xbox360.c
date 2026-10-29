@@ -6,9 +6,11 @@
 // CHECK-DAG: #define _WIN32 1
 // CHECK-DAG: #define _XBOX_VER 200
 
+// CHECK-DAG: #define __ALTIVEC__ 1
 // CHECK-DAG: #define __LDBL_MANT_DIG__ 53
 // CHECK-DAG: #define __SIZEOF_LONG_DOUBLE__ 8
 // CHECK-DAG: #define __SIZEOF_WCHAR_T__ 2
+// CHECK-DAG: #define __VMX128__ 1
 // CHECK-DAG: #define __WCHAR_TYPE__ unsigned short
 // CHECK-DAG: #define __WCHAR_UNSIGNED__ 1
 
