@@ -91,6 +91,10 @@ def RetCC_PPC : CallingConv<[
            CCIfSubtarget<"hasAltivec()",
            CCAssignToReg<[V2, V3, V4, V5, V6, V7, V8, V9]>>>,
 
+  // The Xbox 360 returns a vector in V1.
+  CCIfType<[v16i8, v8i16, v4i32, v2i64, v1i128, v4f32, v2f64],
+           CCIfSubtarget<"isXbox360()", CCAssignToReg<[V1]>>>,
+
   // Vector types returned as "direct" go into V2 .. V9; note that only the
   // ELFv2 ABI fully utilizes all these registers.
   CCIfType<[v16i8, v8i16, v4i32, v2i64, v1i128, v4f32, v2f64],
@@ -277,6 +281,11 @@ def CC_PPC32_SVR4_VarArg : CallingConv<[
 // put vector arguments in vector registers before putting them on the stack.
 let Entry = 1 in
 def CC_PPC32_SVR4 : CallingConv<[
+  // Xbox 360 vector arguments use V1-V13 and positional stack slots.
+  CCIfType<[v16i8, v8i16, v4i32, v2i64, v1i128, v4f32, v2f64],
+           CCIfSubtarget<"isXbox360()",
+                         CCCustom<"CC_Xbox360_AssignVector">>>,
+
   // The first 12 Vector arguments are passed in AltiVec registers.
   CCIfType<[v16i8, v8i16, v4i32, v2i64, v1i128, v4f32, v2f64],
            CCIfSubtarget<"hasAltivec()", CCAssignToReg<[V2, V3, V4, V5, V6, V7,

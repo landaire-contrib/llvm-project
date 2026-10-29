@@ -166,6 +166,25 @@ static bool CC_Xbox360_AssignByVal(unsigned &ValNo, MVT &ValVT, MVT &LocVT,
   return true;
 }
 
+// Vectors use v1-v13 and a 16-byte aligned parameter area slot, but no GPR or
+// FPR. Later vectors are passed in their slot.
+static bool CC_Xbox360_AssignVector(unsigned &ValNo, MVT &ValVT, MVT &LocVT,
+                                    CCValAssign::LocInfo &LocInfo,
+                                    ISD::ArgFlagsTy &ArgFlags, CCState &State) {
+  static const MCPhysReg VRs[] = {
+      PPC::V1, PPC::V2, PPC::V3,  PPC::V4,  PPC::V5,  PPC::V6, PPC::V7,
+      PPC::V8, PPC::V9, PPC::V10, PPC::V11, PPC::V12, PPC::V13};
+
+  unsigned Offset = getXbox360ArgOffset(State);
+  unsigned SlotOffset = alignTo(Offset, 16);
+  State.AllocateStack(SlotOffset + 16 - Offset, Align(8));
+  if (MCRegister Reg = State.AllocateReg(VRs))
+    State.addLoc(CCValAssign::getReg(ValNo, ValVT, Reg, LocVT, LocInfo));
+  else
+    State.addLoc(CCValAssign::getMem(ValNo, ValVT, SlotOffset, LocVT, LocInfo));
+  return true;
+}
+
 static bool CC_PPC32_SVR4_Custom_AlignArgRegs(unsigned &ValNo, MVT &ValVT,
                                               MVT &LocVT,
                                               CCValAssign::LocInfo &LocInfo,

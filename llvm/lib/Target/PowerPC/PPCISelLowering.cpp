@@ -4228,8 +4228,10 @@ static unsigned EnsureStackAlignment(const PPCFrameLowering *Lowering,
   return alignTo(NumBytes, Lowering->getStackAlign());
 }
 
-static bool isSupportedXbox360Argument(const ISD::ArgFlagsTy &Flags,
-                                       const Type *OrigTy) {
+// Vectors must be legal 16-byte AltiVec types, and the console compiler
+// rejects vector arguments in variadic calls.
+static bool isSupportedXbox360Argument(const ISD::ArgFlagsTy &Flags, MVT VT,
+                                       const Type *OrigTy, bool IsVarArgCall) {
   if (Flags.isByVal())
     return !Flags.isVarArg() && Flags.getByValSize() != 0;
   if (const auto *IntTy = dyn_cast_or_null<IntegerType>(OrigTy))
@@ -4237,6 +4239,8 @@ static bool isSupportedXbox360Argument(const ISD::ArgFlagsTy &Flags,
   if (OrigTy &&
       (OrigTy->isHalfTy() || OrigTy->isFloatTy() || OrigTy->isDoubleTy()))
     return !Flags.isVarArg() || OrigTy->isDoubleTy();
+  if (OrigTy && OrigTy->isVectorTy())
+    return VT.is128BitVector() && !IsVarArgCall;
   return OrigTy && OrigTy->isPointerTy();
 }
 
@@ -4300,12 +4304,14 @@ SDValue PPCTargetLowering::LowerFormalArguments_32SVR4(
   const Align PtrAlign(4);
 
   if (Subtarget.isXbox360() && any_of(Ins, [](const ISD::InputArg &Arg) {
-        return !isSupportedXbox360Argument(Arg.Flags, Arg.OrigTy);
+        return !isSupportedXbox360Argument(Arg.Flags, Arg.VT, Arg.OrigTy,
+                                           /*IsVarArgCall=*/false);
       }))
     report_fatal_error(
         "unsupported xbox360 argument type; supported types are integers up "
-        "to 128 bits, pointers, fixed f16/f32/f64, variadic f64, and nonempty "
-        "fixed byval aggregates\n",
+        "to 128 bits, pointers, fixed f16/f32/f64, variadic f64, 16-byte "
+        "AltiVec vectors outside variadic calls, and nonempty fixed byval "
+        "aggregates\n",
         false);
 
   // Assign locations to all of the incoming arguments.
@@ -6166,13 +6172,15 @@ SDValue PPCTargetLowering::LowerCall_32SVR4(
 
   MachineFunction &MF = DAG.getMachineFunction();
 
-  if (Subtarget.isXbox360() && any_of(Outs, [](const ISD::OutputArg &Arg) {
-        return !isSupportedXbox360Argument(Arg.Flags, Arg.OrigTy);
+  if (Subtarget.isXbox360() && any_of(Outs, [&](const ISD::OutputArg &Arg) {
+        return !isSupportedXbox360Argument(Arg.Flags, Arg.VT, Arg.OrigTy,
+                                           IsVarArg);
       }))
     report_fatal_error(
         "unsupported xbox360 argument type; supported types are integers up "
-        "to 128 bits, pointers, fixed f16/f32/f64, variadic f64, and nonempty "
-        "fixed byval aggregates\n",
+        "to 128 bits, pointers, fixed f16/f32/f64, variadic f64, 16-byte "
+        "AltiVec vectors outside variadic calls, and nonempty fixed byval "
+        "aggregates\n",
         false);
 
   // Mark this function as potentially containing a function that contains a
@@ -8163,6 +8171,13 @@ PPCTargetLowering::CanLowerReturn(CallingConv::ID CallConv,
                          false);
   }
 
+  // An Xbox 360 vector is returned in V1, which needs a legal 16-byte AltiVec
+  // type.
+  if (Subtarget.isXbox360() && RetTy && RetTy->isVectorTy() &&
+      (Outs.size() != 1 || !Outs[0].VT.is128BitVector()))
+    report_fatal_error("unsupported xbox360 return type; vectors must be "
+                       "16-byte AltiVec vectors\n",
+                       false);
   SmallVector<CCValAssign, 16> RVLocs;
   CCState CCInfo(CallConv, isVarArg, MF, RVLocs, Context);
   return CCInfo.CheckReturn(
