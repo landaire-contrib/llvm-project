@@ -70,6 +70,47 @@ static void writeFromHalf16(Ctx &ctx, uint8_t *loc, uint32_t insn) {
   write32(ctx, ctx.arg.isLE ? loc : loc - 2, insn);
 }
 
+// Returns the low bits of a DS- or DQ-form displacement field that belong to
+// the opcode of the instruction, or 0 for other instructions.
+static uint16_t getDSOrDQFormMask(uint32_t insn) {
+  switch (insn >> 26) {
+  case 56: // lq
+    return 0xf;
+  case 57: // lfdp, lxsd, lxssp
+  case 58: // ld, ldu, lwa
+  case 62: // std, stdu, stq
+    return 0x3;
+  case 61: // lxv and stxv are DQ-form; stfdp, stxsd and stxssp are DS-form.
+    return (insn & 3) == 1 ? 0xf : 0x3;
+  default:
+    return 0;
+  }
+}
+
+// Returns true for the relocations that set the 16-bit displacement field of
+// a D-form instruction.
+static bool isDisplacementReloc(RelType type) {
+  switch (type) {
+  case R_PPC_ADDR16:
+  case R_PPC_ADDR16_LO:
+  case R_PPC_DTPREL16:
+  case R_PPC_DTPREL16_LO:
+  case R_PPC_GOT16:
+  case R_PPC_GOT_TLSGD16:
+  case R_PPC_GOT_TLSGD16_LO:
+  case R_PPC_GOT_TLSLD16:
+  case R_PPC_GOT_TLSLD16_LO:
+  case R_PPC_GOT_TPREL16:
+  case R_PPC_GOT_TPREL16_LO:
+  case R_PPC_REL16_LO:
+  case R_PPC_TPREL16:
+  case R_PPC_TPREL16_LO:
+    return true;
+  default:
+    return false;
+  }
+}
+
 void elf::writePPC32GlinkSection(Ctx &ctx, uint8_t *buf, size_t numEntries) {
   // Create canonical PLT entries for non-PIE code. Compilers don't generate
   // non-GOT-non-PLT relocations referencing external functions for -fpie/-fPIE.
@@ -224,6 +265,7 @@ RelExpr PPC::getRelExpr(RelType type, const Symbol &s,
   switch (type) {
   case R_PPC_NONE:
     return R_NONE;
+  case R_PPC_ADDR16:
   case R_PPC_ADDR16_HA:
   case R_PPC_ADDR16_HI:
   case R_PPC_ADDR16_LO:
@@ -498,10 +540,22 @@ void PPC::relaxTlsIeToLe(uint8_t *loc, const Relocation &rel,
 
 void PPC::relocateAlloc(InputSection &sec, uint8_t *buf) const {
   uint64_t secAddr = sec.getOutputSection()->addr + sec.outSecOff;
+  bool isCode = sec.flags & SHF_EXECINSTR;
   for (const Relocation &rel : sec.relocs()) {
     uint8_t *loc = buf + rel.offset;
     const uint64_t val =
         SignExtend64(sec.getRelocTargetVA(ctx, rel, secAddr + rel.offset), 32);
+
+    // The 32-bit ABI has no DS- or DQ-form relocations, so the displacement of
+    // a 64-bit load or store uses a D-form relocation. As GNU ld does, keep the
+    // low bits of such an instruction, which belong to its opcode, and require
+    // an aligned displacement. IE to LE relaxation replaces the instruction.
+    uint16_t opcodeMask = 0;
+    if (isCode && rel.expr != R_RELAX_TLS_IE_TO_LE &&
+        isDisplacementReloc(rel.type) && rel.offset >= (ctx.arg.isLE ? 0 : 2))
+      opcodeMask = getDSOrDQFormMask(readFromHalf16(ctx, loc));
+    uint16_t opcodeBits = read16(ctx, loc) & opcodeMask;
+
     switch (rel.expr) {
     case R_RELAX_TLS_GD_TO_IE_GOT_OFF:
       relaxTlsGdToIe(loc, rel, val);
@@ -518,6 +572,12 @@ void PPC::relocateAlloc(InputSection &sec, uint8_t *buf) const {
     default:
       relocate(loc, rel, val);
       break;
+    }
+
+    if (opcodeMask) {
+      uint16_t field = read16(ctx, loc);
+      checkAlignment(ctx, loc, field, opcodeMask + 1, rel);
+      write16(ctx, loc, (field & ~opcodeMask) | opcodeBits);
     }
   }
 }
