@@ -1613,6 +1613,42 @@ void PPCAsmPrinter::emitInstruction(const MachineInstr *MI) {
       return;
     }
     break;
+  case PPC::MFMSR_PROT: {
+    MCRegister Msr = MI->getOperand(0).getReg();
+    EmitToStreamer(*OutStreamer, MCInstBuilder(PPC::MFMSR).addReg(Msr));
+    return;
+  }
+  case PPC::LWARX_PROT:
+  case PPC::LDARX_PROT: {
+    // Transform: %rd = LWARX_PROT %ra, %rb
+    // Into:      mtmsrd r13, 1
+    //            lwarx %rd, %ra, %rb
+    // r13 holds the processor control region pointer, whose MSR[EE] bit is
+    // clear, so the reservation runs with external interrupts disabled.
+    unsigned Opc = MI->getOpcode() == PPC::LWARX_PROT ? PPC::LWARX : PPC::LDARX;
+    EmitToStreamer(*OutStreamer,
+                   MCInstBuilder(PPC::MTMSRD).addReg(PPC::R13).addImm(1));
+    EmitToStreamer(*OutStreamer, MCInstBuilder(Opc)
+                                     .addReg(MI->getOperand(0).getReg())
+                                     .addReg(MI->getOperand(1).getReg())
+                                     .addReg(MI->getOperand(2).getReg()));
+    return;
+  }
+  case PPC::STWCX_PROT:
+  case PPC::STDCX_PROT: {
+    // Transform: STWCX_PROT %rs, %ra, %rb, %msr
+    // Into:      stwcx. %rs, %ra, %rb
+    //            mtmsrd %msr, 1
+    unsigned Opc = MI->getOpcode() == PPC::STWCX_PROT ? PPC::STWCX : PPC::STDCX;
+    EmitToStreamer(*OutStreamer, MCInstBuilder(Opc)
+                                     .addReg(MI->getOperand(0).getReg())
+                                     .addReg(MI->getOperand(1).getReg())
+                                     .addReg(MI->getOperand(2).getReg()));
+    EmitToStreamer(*OutStreamer, MCInstBuilder(PPC::MTMSRD)
+                                     .addReg(MI->getOperand(3).getReg())
+                                     .addImm(1));
+    return;
+  }
   case PPC::LD:
   case PPC::STD:
   case PPC::LWA_32:

@@ -197,6 +197,14 @@ public:
     return PPC::has64BitAddresses(getTargetTriple());
   }
 
+  /// True if each reservation must run with external interrupts disabled in
+  /// the form the Xbox 360 kernel loader accepts: "mtmsrd r13, 1" directly
+  /// before every l[wd]arx and "mtmsrd rS, 1" with the saved MSR directly
+  /// after every st[wd]cx.
+  bool hasProtectedReservations() const {
+    return getTargetTriple().getOS() == Triple::Xbox360;
+  }
+
   unsigned  getRedZoneSize() const {
     if (usesPPC64ABI())
       // 288 bytes = 18*8 (FPRs) + 18*8 (GPRs, GPR13 reserved)
