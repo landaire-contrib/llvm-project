@@ -1,4 +1,4 @@
-; RUN: llc -mtriple=powerpc64-unknown-xbox360 \
+; RUN: llc -mtriple=powerpc64-unknown-xbox360-ilp32 \
 ; RUN:   -verify-machineinstrs < %s | FileCheck %s
 
 %S2 = type { [2 x i8] }

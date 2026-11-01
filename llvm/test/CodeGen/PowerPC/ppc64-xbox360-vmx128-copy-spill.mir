@@ -1,7 +1,7 @@
-# RUN: llc -mtriple=powerpc64-unknown-xbox360 -mattr=+altivec,+vmx128 \
+# RUN: llc -mtriple=powerpc64-unknown-xbox360-ilp32 -mattr=+altivec,+vmx128 \
 # RUN:   -run-pass=postrapseudos -verify-machineinstrs -o - %s \
 # RUN:   | FileCheck %s --check-prefix=COPY
-# RUN: llc -mtriple=powerpc64-unknown-xbox360 -mattr=+altivec,+vmx128 \
+# RUN: llc -mtriple=powerpc64-unknown-xbox360-ilp32 -mattr=+altivec,+vmx128 \
 # RUN:   -run-pass=prologepilog -verify-machineinstrs -o - %s \
 # RUN:   | FileCheck %s --check-prefix=FRAME
 

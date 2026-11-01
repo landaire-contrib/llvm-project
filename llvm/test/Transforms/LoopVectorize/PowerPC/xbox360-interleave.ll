@@ -1,5 +1,5 @@
-; RUN: opt -S -passes=loop-vectorize -mtriple=powerpc64-unknown-xbox360 -mcpu=ppc64 -mattr=+altivec,+vmx128 < %s | FileCheck %s --check-prefix=XBOX
-; RUN: opt -S -passes=loop-vectorize -mtriple=powerpc64-unknown-xbox360 -mcpu=ppc64 -mattr=+altivec,-vmx128 < %s | FileCheck %s --check-prefix=XBOX
+; RUN: opt -S -passes=loop-vectorize -mtriple=powerpc64-unknown-xbox360-ilp32 -mcpu=ppc64 -mattr=+altivec,+vmx128 < %s | FileCheck %s --check-prefix=XBOX
+; RUN: opt -S -passes=loop-vectorize -mtriple=powerpc64-unknown-xbox360-ilp32 -mcpu=ppc64 -mattr=+altivec,-vmx128 < %s | FileCheck %s --check-prefix=XBOX
 ; RUN: opt -S -passes=loop-vectorize -mtriple=powerpc64-unknown-linux-gnu -mcpu=ppc64 -mattr=+altivec < %s | FileCheck %s --check-prefix=PPC
 
 ; Xenon vector arithmetic has a long latency, so loops are interleaved more

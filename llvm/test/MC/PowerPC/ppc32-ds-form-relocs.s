@@ -1,8 +1,8 @@
-# RUN: llvm-mc -triple=powerpc64-unknown-xbox360 -filetype=obj %s | \
+# RUN: llvm-mc -triple=powerpc64-unknown-xbox360-ilp32 -filetype=obj %s | \
 # RUN:   llvm-readobj -r - | FileCheck %s
 # RUN: llvm-mc -triple=powerpc-unknown-linux-gnu -filetype=obj %s | \
 # RUN:   llvm-readobj -r - | FileCheck %s
-# RUN: llvm-mc -triple=powerpc64-unknown-xbox360 -filetype=obj %s | \
+# RUN: llvm-mc -triple=powerpc64-unknown-xbox360-ilp32 -filetype=obj %s | \
 # RUN:   llvm-objdump -d --no-show-raw-insn - | FileCheck %s --check-prefix=INSN
 
 ## The 32-bit ELF ABI has no DS- or DQ-form relocations. As in GNU as, the

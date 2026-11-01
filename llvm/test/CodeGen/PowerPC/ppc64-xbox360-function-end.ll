@@ -1,4 +1,4 @@
-; RUN: llc -mtriple=powerpc64-unknown-xbox360 -filetype=obj < %s | \
+; RUN: llc -mtriple=powerpc64-unknown-xbox360-ilp32 -filetype=obj < %s | \
 ; RUN:   llvm-readobj --sections - | FileCheck %s --check-prefix=XBOX
 ; RUN: llc -mtriple=powerpc64-unknown-lv2 -filetype=obj < %s | \
 ; RUN:   llvm-readobj --sections - | FileCheck %s --check-prefix=LV2
@@ -6,7 +6,7 @@
 ; Xbox 360 uses an ELF32 ABI and does not use the PPC64 ELF traceback table.
 ; In particular, fixed-size thunk sections must not gain twelve bytes after
 ; every function. LV2 remains a PPC64 ELF ABI despite its ILP32 data model.
-target triple = "powerpc64-unknown-xbox360"
+target triple = "powerpc64-unknown-xbox360-ilp32"
 
 ; XBOX: Name: .xthunks
 ; XBOX: Size: 16

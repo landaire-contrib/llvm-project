@@ -1,6 +1,6 @@
-; RUN: llc -mtriple=powerpc64-unknown-xbox360 -verify-machineinstrs < %s | FileCheck %s --check-prefix=XBOX
-; RUN: llc -mtriple=powerpc64-unknown-xbox360 -mattr=-altivec,-vmx128 -verify-machineinstrs < %s | FileCheck %s --check-prefix=XBOX
-; RUN: llc -mtriple=powerpc64-unknown-xbox360 -mattr=-stfiwx -verify-machineinstrs < %s | FileCheck %s --check-prefix=NO-STFIWX
+; RUN: llc -mtriple=powerpc64-unknown-xbox360-ilp32 -verify-machineinstrs < %s | FileCheck %s --check-prefix=XBOX
+; RUN: llc -mtriple=powerpc64-unknown-xbox360-ilp32 -mattr=-altivec,-vmx128 -verify-machineinstrs < %s | FileCheck %s --check-prefix=XBOX
+; RUN: llc -mtriple=powerpc64-unknown-xbox360-ilp32 -mattr=-stfiwx -verify-machineinstrs < %s | FileCheck %s --check-prefix=NO-STFIWX
 ; RUN: llc -mtriple=powerpc64-unknown-linux-gnu -mcpu=970 -verify-machineinstrs < %s | FileCheck %s --check-prefix=OTHER
 ;
 ; STFIWX writes exactly the destination word. No VSX, FPCVT, vector

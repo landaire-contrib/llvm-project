@@ -1,4 +1,4 @@
-; RUN: llc -mtriple=powerpc64-unknown-xbox360 -mattr=+altivec,+vmx128 \
+; RUN: llc -mtriple=powerpc64-unknown-xbox360-ilp32 -mattr=+altivec,+vmx128 \
 ; RUN:   -verify-machineinstrs -ppc-reg-with-percent-prefix < %s | FileCheck %s
 ; RUN: llc -mtriple=powerpc-unknown-unknown -mattr=+altivec,+vmx128 \
 ; RUN:   -verify-machineinstrs -ppc-reg-with-percent-prefix < %s | FileCheck %s

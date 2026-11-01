@@ -1,4 +1,4 @@
-; RUN: opt -O2 -S < %s | llc -mtriple=powerpc64-unknown-xbox360 -mattr=+altivec,+vmx128 | FileCheck %s --check-prefixes=CHECK,XBOX
+; RUN: opt -O2 -S < %s | llc -mtriple=powerpc64-unknown-xbox360-ilp32 -mattr=+altivec,+vmx128 | FileCheck %s --check-prefixes=CHECK,XBOX
 ; RUN: opt -O2 -S < %s | llc -mtriple=powerpc-unknown-linux-gnu -mattr=+altivec | FileCheck %s --check-prefixes=CHECK,ALTIVEC
 ;
 ; The result may be unused, but the sticky VSCR[SAT] update must remain

@@ -6,7 +6,7 @@
 # RUN: llvm-mc -filetype=obj -triple=powerpc %s -o %t.o
 # RUN: ld.lld %t.o --defsym=a=0x10020010 --defsym=b=0x1234 -o %t
 # RUN: llvm-objdump -d --no-show-raw-insn %t | FileCheck %s
-# RUN: llvm-mc -filetype=obj -triple=powerpc64-unknown-xbox360 %s -o %t.xbox.o
+# RUN: llvm-mc -filetype=obj -triple=powerpc64-unknown-xbox360-ilp32 %s -o %t.xbox.o
 # RUN: ld.lld %t.xbox.o --defsym=a=0x10020010 --defsym=b=0x1234 -o %t.xbox
 # RUN: llvm-objdump -d --no-show-raw-insn %t.xbox | FileCheck %s
 

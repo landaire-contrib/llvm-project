@@ -1,22 +1,22 @@
-; RUN: llc -mtriple=powerpc64-unknown-xbox360 \
+; RUN: llc -mtriple=powerpc64-unknown-xbox360-ilp32 \
 ; RUN:   -verify-machineinstrs < %s | FileCheck %s --check-prefix=BE
-; RUN: llc -mtriple=powerpc64-unknown-xbox360 -mattr=-xbox360 \
+; RUN: llc -mtriple=powerpc64-unknown-xbox360-ilp32 -mattr=-xbox360 \
 ; RUN:   -verify-machineinstrs < %s | FileCheck %s --check-prefix=BE
-; RUN: llc -mtriple=powerpc64-unknown-xbox360 -frame-pointer=all \
+; RUN: llc -mtriple=powerpc64-unknown-xbox360-ilp32 -frame-pointer=all \
 ; RUN:   -verify-machineinstrs < %s | FileCheck %s --check-prefix=FP
-; RUN: llc -mtriple=powerpc64-unknown-xbox360 -stackrealign \
+; RUN: llc -mtriple=powerpc64-unknown-xbox360-ilp32 -stackrealign \
 ; RUN:   -verify-machineinstrs < %s | FileCheck %s --check-prefix=BP
-; RUN: llc -mtriple=powerpc64-unknown-xbox360 -mattr=+altivec,-vmx128 \
+; RUN: llc -mtriple=powerpc64-unknown-xbox360-ilp32 -mattr=+altivec,-vmx128 \
 ; RUN:   -verify-machineinstrs < %s | FileCheck %s --check-prefix=VMX
-; RUN: llc -mtriple=powerpc64-unknown-xbox360 \
+; RUN: llc -mtriple=powerpc64-unknown-xbox360-ilp32 \
 ; RUN:   -filetype=obj < %s | llvm-readobj --file-headers - | FileCheck %s --check-prefix=ELF
-; RUN: llc -mtriple=powerpc64-unknown-xbox360 \
+; RUN: llc -mtriple=powerpc64-unknown-xbox360-ilp32 \
 ; RUN:   -stop-after=prologepilog < %s | FileCheck %s --check-prefix=LARGE-MIR
 
 ; The Xbox 360 uses an ILP32 ABI on a 64-bit PowerPC processor. Pointers and
 ; ELF container fields are 32-bit, while i64 values use 64-bit GPRs.
 
-target triple = "powerpc64-unknown-xbox360"
+target triple = "powerpc64-unknown-xbox360-ilp32"
 
 ; BE-LABEL: add_i64:
 ; BE:       add 3, 3, 4

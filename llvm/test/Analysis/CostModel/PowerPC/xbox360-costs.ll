@@ -1,5 +1,5 @@
-; RUN: opt -passes='print<cost-model>' -disable-output -mtriple=powerpc64-unknown-xbox360 -mcpu=ppc64 -mattr=+altivec,+vmx128 -cost-kind=throughput < %s 2>&1 | FileCheck %s --check-prefixes=XBOX-RT,XBOX
-; RUN: opt -passes='print<cost-model>' -disable-output -mtriple=powerpc64-unknown-xbox360 -mcpu=ppc64 -mattr=+altivec,+vmx128 -cost-kind=code-size < %s 2>&1 | FileCheck %s --check-prefixes=XBOX-SIZE,XBOX
+; RUN: opt -passes='print<cost-model>' -disable-output -mtriple=powerpc64-unknown-xbox360-ilp32 -mcpu=ppc64 -mattr=+altivec,+vmx128 -cost-kind=throughput < %s 2>&1 | FileCheck %s --check-prefixes=XBOX-RT,XBOX
+; RUN: opt -passes='print<cost-model>' -disable-output -mtriple=powerpc64-unknown-xbox360-ilp32 -mcpu=ppc64 -mattr=+altivec,+vmx128 -cost-kind=code-size < %s 2>&1 | FileCheck %s --check-prefixes=XBOX-SIZE,XBOX
 ; RUN: opt -passes='print<cost-model>' -disable-output -mtriple=powerpc64-unknown-linux-gnu -mcpu=ppc64 -mattr=+altivec,+vmx128 -cost-kind=throughput < %s 2>&1 | FileCheck %s --check-prefix=PPC-RT
 ; RUN: opt -passes='print<cost-model>' -disable-output -mtriple=powerpc64-unknown-linux-gnu -mcpu=ppc64 -mattr=+altivec,+vmx128 -cost-kind=code-size < %s 2>&1 | FileCheck %s --check-prefix=PPC-SIZE
 ;

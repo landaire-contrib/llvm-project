@@ -1,4 +1,4 @@
-; RUN: llc -mtriple=powerpc64-unknown-xbox360 -verify-machineinstrs < %s | FileCheck %s
+; RUN: llc -mtriple=powerpc64-unknown-xbox360-ilp32 -verify-machineinstrs < %s | FileCheck %s
 
 ; The zero-extension peephole promotes LHBRX and LWBRX to LHBRX8 and LWBRX8.
 ; Their address operands are 32-bit pointer registers on the Xbox 360 and must

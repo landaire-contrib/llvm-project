@@ -152,6 +152,11 @@ bool PPC::usesPPC64ABI(const Triple &TT) {
   return TT.isPPC64() && TT.getOS() != Triple::Xbox360;
 }
 
+bool PPC::has64BitAddresses(const Triple &TT) {
+  return TT.isPPC64() &&
+         !(TT.getOS() == Triple::Xbox360 && TT.isPPC64ILP32ABI());
+}
+
 static MCInstrInfo *createPPCMCInstrInfo() {
   MCInstrInfo *X = new MCInstrInfo();
   InitPPCMCInstrInfo(X);
@@ -159,7 +164,7 @@ static MCInstrInfo *createPPCMCInstrInfo() {
 }
 
 static MCRegisterInfo *createPPCMCRegisterInfo(const Triple &TT) {
-  bool isPPC64 = PPC::usesPPC64ABI(TT);
+  bool isPPC64 = PPC::has64BitAddresses(TT);
   unsigned Flavour = isPPC64 ? 0 : 1;
   unsigned RA = isPPC64 ? PPC::LR8 : PPC::LR;
 
@@ -195,7 +200,7 @@ static MCSubtargetInfo *createPPCMCSubtargetInfo(const Triple &TT,
 static MCAsmInfo *createPPCMCAsmInfo(const MCRegisterInfo &MRI,
                                      const Triple &TheTriple,
                                      const MCTargetOptions &Options) {
-  bool isPPC64 = PPC::usesPPC64ABI(TheTriple);
+  bool isPPC64 = PPC::has64BitAddresses(TheTriple);
 
   MCAsmInfo *MAI;
   if (TheTriple.isOSBinFormatXCOFF())

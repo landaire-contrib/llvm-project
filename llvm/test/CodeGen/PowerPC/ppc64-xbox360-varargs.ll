@@ -1,6 +1,6 @@
-; RUN: llc -mtriple=powerpc64-unknown-xbox360 \
+; RUN: llc -mtriple=powerpc64-unknown-xbox360-ilp32 \
 ; RUN:   -verify-machineinstrs < %s | FileCheck %s
-; RUN: llc -mtriple=powerpc64-unknown-xbox360 -O0 \
+; RUN: llc -mtriple=powerpc64-unknown-xbox360-ilp32 -O0 \
 ; RUN:   -verify-machineinstrs < %s | FileCheck %s --check-prefix=O0
 
 declare i32 @sink(i32, ...)

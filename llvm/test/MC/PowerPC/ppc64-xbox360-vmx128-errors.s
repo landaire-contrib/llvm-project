@@ -1,4 +1,4 @@
-# RUN: not llvm-mc -triple powerpc64-unknown-xbox360 -mattr=+vmx128 %s 2>&1 \
+# RUN: not llvm-mc -triple powerpc64-unknown-xbox360-ilp32 -mattr=+vmx128 %s 2>&1 \
 # RUN:   | FileCheck %s
 # RUN: not llvm-mc -triple powerpc-unknown-xbox360 -mattr=+vmx128 %s 2>&1 \
 # RUN:   | FileCheck %s

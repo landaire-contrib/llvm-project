@@ -1,4 +1,4 @@
-; RUN: llc -mtriple=powerpc64-unknown-xbox360 -O1 -verify-machineinstrs < %s \
+; RUN: llc -mtriple=powerpc64-unknown-xbox360-ilp32 -O1 -verify-machineinstrs < %s \
 ; RUN:   | FileCheck %s
 
 ; Shrink wrapping must not pick a prologue block whose only free GPRs are

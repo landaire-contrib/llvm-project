@@ -1,4 +1,4 @@
-; RUN: llc -mtriple=powerpc64-unknown-xbox360 -tailcallopt \
+; RUN: llc -mtriple=powerpc64-unknown-xbox360-ilp32 -tailcallopt \
 ; RUN:   -verify-machineinstrs < %s | FileCheck %s
 
 ; Ten arguments need more parameter area than the caller's 80-byte minimum, so

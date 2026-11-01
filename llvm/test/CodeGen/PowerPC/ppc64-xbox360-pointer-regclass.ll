@@ -1,4 +1,4 @@
-; RUN: llc -mtriple=powerpc64-unknown-xbox360 -verify-machineinstrs < %s | FileCheck %s
+; RUN: llc -mtriple=powerpc64-unknown-xbox360-ilp32 -verify-machineinstrs < %s | FileCheck %s
 
 ; Pointers are 32 bits wide in 64-bit registers. Inline assembly memory
 ; operands and frame base registers use the 32-bit pointer register class.

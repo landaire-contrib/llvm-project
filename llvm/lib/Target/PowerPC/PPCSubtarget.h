@@ -195,6 +195,12 @@ public:
   /// 64-bit code under a 32-bit ABI.
   bool usesPPC64ABI() const { return PPC::usesPPC64ABI(getTargetTriple()); }
 
+  /// True if addresses and the stack pointer are 64 bits wide. The Xbox 360
+  /// ILP32 environment runs 64-bit code with 32-bit addresses.
+  bool has64BitAddresses() const {
+    return PPC::has64BitAddresses(getTargetTriple());
+  }
+
   unsigned  getRedZoneSize() const {
     if (usesPPC64ABI())
       // 288 bytes = 18*8 (FPRs) + 18*8 (GPRs, GPR13 reserved)
@@ -256,7 +262,9 @@ public:
   /// True if the GV will be accessed via an indirect symbol.
   bool isGVIndirectSymbol(const GlobalValue *GV) const;
 
-  MVT getScalarIntVT() const { return usesPPC64ABI() ? MVT::i64 : MVT::i32; }
+  MVT getScalarIntVT() const {
+    return has64BitAddresses() ? MVT::i64 : MVT::i32;
+  }
 
   /// Calculates the effective code model for argument GV.
   CodeModel::Model getCodeModel(const TargetMachine &TM,

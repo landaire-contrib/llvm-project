@@ -1,4 +1,4 @@
-; RUN: not --crash llc -mtriple=powerpc64-unknown-xbox360 -mattr=+altivec,-vmx128 \
+; RUN: not --crash llc -mtriple=powerpc64-unknown-xbox360-ilp32 -mattr=+altivec,-vmx128 \
 ; RUN:   < %s 2>&1 | FileCheck %s
 
 ; The VMX128 intrinsics select only with vmx128.

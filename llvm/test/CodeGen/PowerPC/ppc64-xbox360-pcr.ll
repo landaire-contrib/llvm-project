@@ -1,7 +1,7 @@
-; RUN: llc -mtriple=powerpc64-unknown-xbox360 -tailcallopt -verify-machineinstrs < %s | FileCheck %s
-; RUN: llc -mtriple=powerpc64-unknown-xbox360 -tailcallopt -mattr=-vmx128 -verify-machineinstrs < %s | FileCheck %s
+; RUN: llc -mtriple=powerpc64-unknown-xbox360-ilp32 -tailcallopt -verify-machineinstrs < %s | FileCheck %s
+; RUN: llc -mtriple=powerpc64-unknown-xbox360-ilp32 -tailcallopt -mattr=-vmx128 -verify-machineinstrs < %s | FileCheck %s
 ; RUN: opt -passes='default<O2>' -S %s | FileCheck %s --check-prefix=IR
-; RUN: llc -mtriple=powerpc64-unknown-xbox360 -tailcallopt -stop-after=finalize-isel < %s | FileCheck %s --check-prefix=MIR
+; RUN: llc -mtriple=powerpc64-unknown-xbox360-ilp32 -tailcallopt -stop-after=finalize-isel < %s | FileCheck %s --check-prefix=MIR
 ; RUN: llc -mtriple=powerpc64-unknown-linux-gnu -tailcallopt -stop-after=finalize-isel < %s | FileCheck %s --check-prefix=BASE-MIR
 ; RUN: llc -mtriple=powerpc-unknown-linux-gnu -tailcallopt -stop-after=finalize-isel < %s | FileCheck %s --check-prefix=BASE-MIR
 
@@ -12,7 +12,7 @@
 ; r13 is reserved, but not call-preserved: migration may replace the PCR.
 ; read_volatile_register keeps each evaluation on the DAG chain. Coalescing
 ; may use r13 directly only while its captured value does not cross a call.
-target triple = "powerpc64-unknown-xbox360"
+target triple = "powerpc64-unknown-xbox360-ilp32"
 
 declare i32 @llvm.read_volatile_register.i32(metadata)
 declare void @migrate()

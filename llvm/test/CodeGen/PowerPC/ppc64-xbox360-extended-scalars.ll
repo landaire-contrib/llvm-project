@@ -1,4 +1,4 @@
-; RUN: llc -mtriple=powerpc64-unknown-xbox360 -verify-machineinstrs < %s | FileCheck %s
+; RUN: llc -mtriple=powerpc64-unknown-xbox360-ilp32 -verify-machineinstrs < %s | FileCheck %s
 
 ; i128 is split across two consecutive 64-bit GPR slots. The intervening i32
 ; consumes one slot, so the second i128 arrives in r6 and r7.

@@ -1,4 +1,4 @@
-; RUN: opt -S -passes=loop-vectorize -mtriple=powerpc64-unknown-xbox360 -mcpu=ppc64 -mattr=+altivec,+vmx128 < %s | FileCheck %s --check-prefixes=CHECK,XBOX
+; RUN: opt -S -passes=loop-vectorize -mtriple=powerpc64-unknown-xbox360-ilp32 -mcpu=ppc64 -mattr=+altivec,+vmx128 < %s | FileCheck %s --check-prefixes=CHECK,XBOX
 ; RUN: opt -S -passes=loop-vectorize -mtriple=powerpc64-unknown-linux-gnu -mcpu=pwr8 -mattr=+vsx < %s | FileCheck %s --check-prefixes=CHECK,PPC
 ;
 ; Keep both vectorizers enabled, and do not force a VF or interleave count.

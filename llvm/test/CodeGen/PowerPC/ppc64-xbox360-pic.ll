@@ -1,13 +1,13 @@
-; RUN: sed -e 's/PIC_LEVEL/1/' %s | llc -mtriple=powerpc64-unknown-xbox360 \
+; RUN: sed -e 's/PIC_LEVEL/1/' %s | llc -mtriple=powerpc64-unknown-xbox360-ilp32 \
 ; RUN:   -relocation-model=pic -verify-machineinstrs \
 ; RUN:   | FileCheck %s --check-prefixes=CHECK,SMALL
-; RUN: sed -e 's/PIC_LEVEL/2/' %s | llc -mtriple=powerpc64-unknown-xbox360 \
+; RUN: sed -e 's/PIC_LEVEL/2/' %s | llc -mtriple=powerpc64-unknown-xbox360-ilp32 \
 ; RUN:   -relocation-model=pic -verify-machineinstrs \
 ; RUN:   | FileCheck %s --check-prefixes=CHECK,BIG
-; RUN: sed -e 's/PIC_LEVEL/1/' %s | llc -mtriple=powerpc64-unknown-xbox360 \
+; RUN: sed -e 's/PIC_LEVEL/1/' %s | llc -mtriple=powerpc64-unknown-xbox360-ilp32 \
 ; RUN:   -relocation-model=pic -filetype=obj \
 ; RUN:   | llvm-readobj -r - | FileCheck %s --check-prefix=SMALL-RELOC
-; RUN: sed -e 's/PIC_LEVEL/2/' %s | llc -mtriple=powerpc64-unknown-xbox360 \
+; RUN: sed -e 's/PIC_LEVEL/2/' %s | llc -mtriple=powerpc64-unknown-xbox360-ilp32 \
 ; RUN:   -relocation-model=pic -filetype=obj \
 ; RUN:   | llvm-readobj -r - | FileCheck %s --check-prefix=BIG-RELOC
 
@@ -15,7 +15,7 @@
 ; the GOT pointer, globals are loaded through the GOT, and calls go through
 ; the PLT. r30 is preserved at full width in its Xbox save slot at -24.
 
-target triple = "powerpc64-unknown-xbox360"
+target triple = "powerpc64-unknown-xbox360-ilp32"
 
 @global = external global i32
 @tls_gd = external thread_local global i32

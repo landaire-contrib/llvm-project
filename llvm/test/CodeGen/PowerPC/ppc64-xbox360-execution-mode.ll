@@ -1,7 +1,7 @@
-; RUN: llc -mtriple=powerpc64-unknown-xbox360 -O2 -verify-machineinstrs < %s | FileCheck %s --check-prefix=XBOX
+; RUN: llc -mtriple=powerpc64-unknown-xbox360-ilp32 -O2 -verify-machineinstrs < %s | FileCheck %s --check-prefix=XBOX
 ; RUN: llc -mtriple=powerpc64-unknown-linux-gnu -O2 -verify-machineinstrs < %s | FileCheck %s --check-prefix=LINUX
-; RUN: llc -mtriple=powerpc64-unknown-xbox360 -O0 -verify-machineinstrs < %s | FileCheck %s --check-prefix=UCMP
-; RUN: llc -mtriple=powerpc64-unknown-xbox360 -mattr=-crbits -O2 -verify-machineinstrs < %s | FileCheck %s --check-prefix=UCMP
+; RUN: llc -mtriple=powerpc64-unknown-xbox360-ilp32 -O0 -verify-machineinstrs < %s | FileCheck %s --check-prefix=UCMP
+; RUN: llc -mtriple=powerpc64-unknown-xbox360-ilp32 -mattr=-crbits -O2 -verify-machineinstrs < %s | FileCheck %s --check-prefix=UCMP
 
 ; XBOX-LABEL: add128:
 ; XBOX-NOT: addc

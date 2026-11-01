@@ -1,8 +1,8 @@
-# RUN: llvm-mc -triple powerpc64-unknown-xbox360 -mattr=-vmx128,+altivec \
+# RUN: llvm-mc -triple powerpc64-unknown-xbox360-ilp32 -mattr=-vmx128,+altivec \
 # RUN:   --show-encoding -ppc-reg-with-percent-prefix %s | FileCheck %s --check-prefix=ENC
-# RUN: llvm-mc -triple powerpc64-unknown-xbox360 -mattr=-vmx128,+altivec \
+# RUN: llvm-mc -triple powerpc64-unknown-xbox360-ilp32 -mattr=-vmx128,+altivec \
 # RUN:   -filetype=obj %s | llvm-objdump -d --no-show-raw-insn \
-# RUN:   --triple=powerpc64-unknown-xbox360 --mattr=-vmx128,+altivec - \
+# RUN:   --triple=powerpc64-unknown-xbox360-ilp32 --mattr=-vmx128,+altivec - \
 # RUN:   | FileCheck %s --check-prefix=DIS
 
 # Classic partial memory instructions remain available and decode correctly

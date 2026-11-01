@@ -1,4 +1,4 @@
-; RUN: llc -mtriple=powerpc64-unknown-xbox360 -verify-machineinstrs < %s | FileCheck %s
+; RUN: llc -mtriple=powerpc64-unknown-xbox360-ilp32 -verify-machineinstrs < %s | FileCheck %s
 
 ; The EXTSW elimination promotes LBZ to LBZ8. The address operand of LBZ8 is
 ; a 32-bit pointer register on the Xbox 360 and must not be widened with

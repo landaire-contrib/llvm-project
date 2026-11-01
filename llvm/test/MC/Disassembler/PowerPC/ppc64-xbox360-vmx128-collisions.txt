@@ -1,6 +1,6 @@
-# RUN: llvm-mc --disassemble %s -triple powerpc64-unknown-xbox360 -mattr=+vmx128 \
+# RUN: llvm-mc --disassemble %s -triple powerpc64-unknown-xbox360-ilp32 -mattr=+vmx128 \
 # RUN:   -ppc-reg-with-percent-prefix | FileCheck --check-prefix=VMX128 %s
-# RUN: llvm-mc --disassemble %s -triple powerpc64-unknown-xbox360 -mattr=-vmx128 \
+# RUN: llvm-mc --disassemble %s -triple powerpc64-unknown-xbox360-ilp32 -mattr=-vmx128 \
 # RUN:   -ppc-reg-with-percent-prefix | FileCheck --check-prefix=NOVMX128 %s
 
 # VMX128 encodings that are also POWER8-10 instructions decode as VMX128

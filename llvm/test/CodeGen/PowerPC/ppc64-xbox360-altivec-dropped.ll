@@ -1,4 +1,4 @@
-; RUN: llc -mtriple=powerpc64-unknown-xbox360 -mattr=+altivec,+vmx128 \
+; RUN: llc -mtriple=powerpc64-unknown-xbox360-ilp32 -mattr=+altivec,+vmx128 \
 ; RUN:   -verify-machineinstrs -ppc-reg-with-percent-prefix < %s \
 ; RUN:   | FileCheck %s --check-prefixes=CHECK,NODROP \
 ; RUN:     --implicit-check-not='{{^[[:space:]]+(vmul[eo]|vmsum|vsum|vmhr?addshs|vmladduhm|dst|dss)}}'
@@ -6,14 +6,14 @@
 ; RUN:   -verify-machineinstrs -ppc-reg-with-percent-prefix < %s \
 ; RUN:   | FileCheck %s --check-prefixes=CHECK,NODROP \
 ; RUN:     --implicit-check-not='{{^[[:space:]]+(vmul[eo]|vmsum|vsum|vmhr?addshs|vmladduhm|dst|dss)}}'
-; RUN: llc -mtriple=powerpc64-unknown-xbox360 -mattr=+altivec,+vmx128 -O0 \
+; RUN: llc -mtriple=powerpc64-unknown-xbox360-ilp32 -mattr=+altivec,+vmx128 -O0 \
 ; RUN:   -verify-machineinstrs -ppc-reg-with-percent-prefix < %s \
 ; RUN:   | FileCheck %s --check-prefix=NODROP
-; RUN: llc -mtriple=powerpc64-unknown-xbox360 -mattr=+altivec,-vmx128 \
+; RUN: llc -mtriple=powerpc64-unknown-xbox360-ilp32 -mattr=+altivec,-vmx128 \
 ; RUN:   -verify-machineinstrs -ppc-reg-with-percent-prefix < %s \
 ; RUN:   | FileCheck %s --check-prefixes=CHECK,NODROP \
 ; RUN:     --implicit-check-not='{{^[[:space:]]+(vmul[eo]|vmsum|vsum|vmhr?addshs|vmladduhm|dst|dss)}}'
-; RUN: llc -mtriple=powerpc64-unknown-xbox360 -mattr=+altivec,-vmx128 -O0 \
+; RUN: llc -mtriple=powerpc64-unknown-xbox360-ilp32 -mattr=+altivec,-vmx128 -O0 \
 ; RUN:   -verify-machineinstrs -ppc-reg-with-percent-prefix < %s \
 ; RUN:   | FileCheck %s --check-prefix=NODROP
 ; RUN: llc -mtriple=powerpc64-unknown-linux-gnu -mcpu=g5 -mattr=+altivec \

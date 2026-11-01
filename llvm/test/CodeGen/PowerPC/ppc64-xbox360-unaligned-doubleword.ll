@@ -1,4 +1,4 @@
-; RUN: llc -mtriple=powerpc64-unknown-xbox360 -verify-machineinstrs < %s | FileCheck %s
+; RUN: llc -mtriple=powerpc64-unknown-xbox360-ilp32 -verify-machineinstrs < %s | FileCheck %s
 
 ; Copies use accesses no wider than their known alignment, as the console
 ; compiler does. Explicitly misaligned scalar accesses keep their width.

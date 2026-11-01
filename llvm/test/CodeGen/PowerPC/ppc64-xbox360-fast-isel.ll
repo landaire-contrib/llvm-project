@@ -1,4 +1,4 @@
-; RUN: llc -mtriple=powerpc64-unknown-xbox360 -O0 -verify-machineinstrs < %s \
+; RUN: llc -mtriple=powerpc64-unknown-xbox360-ilp32 -O0 -verify-machineinstrs < %s \
 ; RUN:   | FileCheck %s
 
 ; FastISel assumes 64-bit pointers on a 64-bit processor, so the Xbox 360 uses

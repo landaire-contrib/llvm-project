@@ -1,4 +1,4 @@
-# RUN: not llvm-mc -triple powerpc64-unknown-xbox360 -mattr=-vmx128 %s 2>&1 | FileCheck %s
+# RUN: not llvm-mc -triple powerpc64-unknown-xbox360-ilp32 -mattr=-vmx128 %s 2>&1 | FileCheck %s
 # RUN: not llvm-mc -triple powerpc64-unknown-linux-gnu -mattr=-vmx128,-xbox360 %s 2>&1 | FileCheck %s --check-prefixes=CHECK,NONXBOX
 
 # VMX128 instructions need vmx128; Xenon X-forms also accept Xbox AltiVec.

@@ -1,5 +1,5 @@
-; RUN: llc -mtriple=powerpc64-unknown-xbox360 -verify-machineinstrs < %s | FileCheck %s --check-prefix=XBOX --implicit-check-not=lha --implicit-check-not=lwz --implicit-check-not=lbz
-; RUN: llc -mtriple=powerpc64-unknown-xbox360 -mattr=-altivec,-vmx128 -verify-machineinstrs < %s | FileCheck %s --check-prefix=XBOX --implicit-check-not=lha --implicit-check-not=lwz --implicit-check-not=lbz
+; RUN: llc -mtriple=powerpc64-unknown-xbox360-ilp32 -verify-machineinstrs < %s | FileCheck %s --check-prefix=XBOX --implicit-check-not=lha --implicit-check-not=lwz --implicit-check-not=lbz
+; RUN: llc -mtriple=powerpc64-unknown-xbox360-ilp32 -mattr=-altivec,-vmx128 -verify-machineinstrs < %s | FileCheck %s --check-prefix=XBOX --implicit-check-not=lha --implicit-check-not=lwz --implicit-check-not=lbz
 ; RUN: llc -mtriple=powerpc64-unknown-linux-gnu -mcpu=970 -verify-machineinstrs < %s | FileCheck %s --check-prefix=OTHER
 ;
 ; Prefer a two-byte zero-extending load and register sign extension on Xenon.

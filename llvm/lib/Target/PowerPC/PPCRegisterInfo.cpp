@@ -94,10 +94,11 @@ extern cl::opt<bool> DisableAutoPairedVecSt;
 static unsigned offsetMinAlignForOpcode(unsigned OpC);
 
 PPCRegisterInfo::PPCRegisterInfo(const PPCTargetMachine &TM)
-    : PPCGenRegisterInfo(PPC::usesPPC64ABI(TM.getTargetTriple()) ? PPC::LR8
-                                                                 : PPC::LR,
-                         PPC::usesPPC64ABI(TM.getTargetTriple()) ? 0 : 1,
-                         PPC::usesPPC64ABI(TM.getTargetTriple()) ? 0 : 1),
+    : PPCGenRegisterInfo(PPC::has64BitAddresses(TM.getTargetTriple())
+                             ? PPC::LR8
+                             : PPC::LR,
+                         PPC::has64BitAddresses(TM.getTargetTriple()) ? 0 : 1,
+                         PPC::has64BitAddresses(TM.getTargetTriple()) ? 0 : 1),
       TM(TM) {
   ImmToIdxMap[PPC::LD]   = PPC::LDX;    ImmToIdxMap[PPC::STD]  = PPC::STDX;
   ImmToIdxMap[PPC::LBZ]  = PPC::LBZX;   ImmToIdxMap[PPC::STB]  = PPC::STBX;
@@ -170,7 +171,7 @@ PPCRegisterInfo::getPointerRegClass(unsigned Kind) const {
   // when it checks for ZERO folding.
   // The Xbox 360 keeps 32-bit pointers in 64-bit registers. This must agree
   // with the ptr_rc register classes selected by HwMode.
-  bool Uses64BitPointerRegs = PPC::usesPPC64ABI(TM.getTargetTriple());
+  bool Uses64BitPointerRegs = PPC::has64BitAddresses(TM.getTargetTriple());
   if (Kind == 1) {
     if (Uses64BitPointerRegs)
       return &PPC::G8RC_NOX0RegClass;
@@ -789,7 +790,7 @@ void PPCRegisterInfo::lowerDynamicAlloc(MachineBasicBlock::iterator II) const {
   // Get the instruction info.
   const TargetInstrInfo &TII = *Subtarget.getInstrInfo();
   // Determine whether 64-bit pointers are used.
-  bool LP64 = Subtarget.usesPPC64ABI();
+  bool LP64 = Subtarget.has64BitAddresses();
   DebugLoc dl = MI.getDebugLoc();
 
   // Get the maximum call stack size.
@@ -849,7 +850,7 @@ void PPCRegisterInfo::prepareDynamicAlloca(MachineBasicBlock::iterator II,
   // Get the instruction info.
   const TargetInstrInfo &TII = *Subtarget.getInstrInfo();
   // Determine whether 64-bit pointers are used.
-  bool LP64 = Subtarget.usesPPC64ABI();
+  bool LP64 = Subtarget.has64BitAddresses();
   DebugLoc dl = MI.getDebugLoc();
   // Get the total frame size.
   unsigned FrameSize = MFI.getStackSize();
@@ -935,7 +936,7 @@ void PPCRegisterInfo::lowerPrepareProbedAlloca(
   // Get the instruction info.
   const TargetInstrInfo &TII = *Subtarget.getInstrInfo();
   // Determine whether 64-bit pointers are used.
-  bool LP64 = Subtarget.usesPPC64ABI();
+  bool LP64 = Subtarget.has64BitAddresses();
   DebugLoc dl = MI.getDebugLoc();
   Register FramePointer = MI.getOperand(0).getReg();
   const Register ActualNegSizeReg = MI.getOperand(1).getReg();
@@ -980,7 +981,7 @@ void PPCRegisterInfo::lowerDynamicAreaOffset(
   const TargetInstrInfo &TII = *Subtarget.getInstrInfo();
 
   unsigned maxCallFrameSize = MFI.getMaxCallFrameSize();
-  bool is64Bit = Subtarget.usesPPC64ABI();
+  bool is64Bit = Subtarget.has64BitAddresses();
   DebugLoc dl = MI.getDebugLoc();
   BuildMI(MBB, II, dl, TII.get(is64Bit ? PPC::LI8 : PPC::LI),
           MI.getOperand(0).getReg())
@@ -1975,7 +1976,7 @@ PPCRegisterInfo::eliminateFrameIndex(MachineBasicBlock::iterator II,
 Register PPCRegisterInfo::getFrameRegister(const MachineFunction &MF) const {
   const PPCFrameLowering *TFI = getFrameLowering(MF);
 
-  if (!MF.getSubtarget<PPCSubtarget>().usesPPC64ABI())
+  if (!MF.getSubtarget<PPCSubtarget>().has64BitAddresses())
     return TFI->hasFP(MF) ? PPC::R31 : PPC::R1;
   else
     return TFI->hasFP(MF) ? PPC::X31 : PPC::X1;
@@ -1986,7 +1987,7 @@ Register PPCRegisterInfo::getBaseRegister(const MachineFunction &MF) const {
   if (!hasBasePointer(MF))
     return getFrameRegister(MF);
 
-  if (Subtarget.usesPPC64ABI())
+  if (Subtarget.has64BitAddresses())
     return PPC::X30;
 
   if (Subtarget.isSVR4ABI() && TM.isPositionIndependent())
@@ -2061,7 +2062,8 @@ Register PPCRegisterInfo::materializeFrameBaseRegister(MachineBasicBlock *MBB,
                                                        int64_t Offset) const {
   const MachineFunction &MF = *MBB->getParent();
   unsigned ADDriOpc =
-      MF.getSubtarget<PPCSubtarget>().usesPPC64ABI() ? PPC::ADDI8 : PPC::ADDI;
+      MF.getSubtarget<PPCSubtarget>().has64BitAddresses() ? PPC::ADDI8
+                                                          : PPC::ADDI;
 
   MachineBasicBlock::iterator Ins = MBB->begin();
   DebugLoc DL;                  // Defaults to "unknown"

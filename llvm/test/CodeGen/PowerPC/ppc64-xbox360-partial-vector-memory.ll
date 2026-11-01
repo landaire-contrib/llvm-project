@@ -1,17 +1,17 @@
 ; RUN: split-file %s %t
-; RUN: llc -mtriple=powerpc64-unknown-xbox360 -verify-machineinstrs \
+; RUN: llc -mtriple=powerpc64-unknown-xbox360-ilp32 -verify-machineinstrs \
 ; RUN:   -ppc-reg-with-percent-prefix < %t/stores.ll \
 ; RUN:   | FileCheck %s --check-prefix=STORE \
 ; RUN:   --implicit-check-not='{{^[ \t]+std}}' --implicit-check-not='(%r1)' \
 ; RUN:   --implicit-check-not='{{(lvlx|lvrx|stvlx|stvrx|lvsr128)}}'
-; RUN: llc -mtriple=powerpc64-unknown-xbox360 -mattr=-vmx128,+altivec \
+; RUN: llc -mtriple=powerpc64-unknown-xbox360-ilp32 -mattr=-vmx128,+altivec \
 ; RUN:   -verify-machineinstrs -ppc-reg-with-percent-prefix < %t/stores.ll \
 ; RUN:   | FileCheck %s --check-prefix=STORE \
 ; RUN:   --implicit-check-not='{{^[ \t]+std}}' --implicit-check-not='(%r1)' \
 ; RUN:   --implicit-check-not='{{(lvlx|lvrx|stvlx|stvrx|lvsr128)}}'
-; RUN: llc -mtriple=powerpc64-unknown-xbox360 -stop-after=finalize-isel \
+; RUN: llc -mtriple=powerpc64-unknown-xbox360-ilp32 -stop-after=finalize-isel \
 ; RUN:   -verify-machineinstrs < %t/loads.ll | FileCheck %s --check-prefix=LOAD
-; RUN: llc -mtriple=powerpc64-unknown-xbox360 -mattr=-vmx128,+altivec \
+; RUN: llc -mtriple=powerpc64-unknown-xbox360-ilp32 -mattr=-vmx128,+altivec \
 ; RUN:   -stop-after=finalize-isel -verify-machineinstrs < %t/loads.ll \
 ; RUN:   | FileCheck %s --check-prefix=LOAD
 ;

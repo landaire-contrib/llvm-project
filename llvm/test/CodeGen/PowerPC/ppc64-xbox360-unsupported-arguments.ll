@@ -1,25 +1,25 @@
 ; RUN: split-file %s %t
-; RUN: not llc -mtriple=powerpc64-unknown-xbox360 -mattr=-altivec \
+; RUN: not llc -mtriple=powerpc64-unknown-xbox360-ilp32 -mattr=-altivec \
 ; RUN:   < %t/vector.ll 2>&1 | FileCheck %s --check-prefix=ARGUMENT
-; RUN: not llc -mtriple=powerpc64-unknown-xbox360 -mattr=+altivec \
+; RUN: not llc -mtriple=powerpc64-unknown-xbox360-ilp32 -mattr=+altivec \
 ; RUN:   < %t/v2f64.ll 2>&1 | FileCheck %s --check-prefix=ARGUMENT
-; RUN: not llc -mtriple=powerpc64-unknown-xbox360 -mattr=+altivec \
+; RUN: not llc -mtriple=powerpc64-unknown-xbox360-ilp32 -mattr=+altivec \
 ; RUN:   < %t/variadic-vector.ll 2>&1 | FileCheck %s --check-prefix=ARGUMENT
-; RUN: not llc -mtriple=powerpc64-unknown-xbox360 -mattr=+altivec \
+; RUN: not llc -mtriple=powerpc64-unknown-xbox360-ilp32 -mattr=+altivec \
 ; RUN:   < %t/variadic-fixed-vector.ll 2>&1 | FileCheck %s --check-prefix=ARGUMENT
-; RUN: not llc -mtriple=powerpc64-unknown-xbox360 -mattr=-altivec \
+; RUN: not llc -mtriple=powerpc64-unknown-xbox360-ilp32 -mattr=-altivec \
 ; RUN:   < %t/vector-return.ll 2>&1 | FileCheck %s --check-prefix=RETURN
-; RUN: not llc -mtriple=powerpc64-unknown-xbox360 \
+; RUN: not llc -mtriple=powerpc64-unknown-xbox360-ilp32 \
 ; RUN:   < %t/f128.ll 2>&1 | FileCheck %s --check-prefix=ARGUMENT
-; RUN: not llc -mtriple=powerpc64-unknown-xbox360 \
+; RUN: not llc -mtriple=powerpc64-unknown-xbox360-ilp32 \
 ; RUN:   < %t/variadic-f32.ll 2>&1 | FileCheck %s --check-prefix=ARGUMENT
-; RUN: not llc -mtriple=powerpc64-unknown-xbox360 \
+; RUN: not llc -mtriple=powerpc64-unknown-xbox360-ilp32 \
 ; RUN:   < %t/variadic-byval.ll 2>&1 | FileCheck %s --check-prefix=ARGUMENT
-; RUN: not llc -mtriple=powerpc64-unknown-xbox360 \
+; RUN: not llc -mtriple=powerpc64-unknown-xbox360-ilp32 \
 ; RUN:   < %t/f32-vaarg.ll 2>&1 | FileCheck %s --check-prefix=VAARG
-; RUN: not llc -mtriple=powerpc64-unknown-xbox360 \
+; RUN: not llc -mtriple=powerpc64-unknown-xbox360-ilp32 \
 ; RUN:   < %t/f128-return.ll 2>&1 | FileCheck %s --check-prefix=RETURN
-; RUN: not llc -mtriple=powerpc64-unknown-xbox360 \
+; RUN: not llc -mtriple=powerpc64-unknown-xbox360-ilp32 \
 ; RUN:   < %t/i256-return.ll 2>&1 | FileCheck %s --check-prefix=RETURN
 
 ; ARGUMENT: unsupported xbox360 argument type

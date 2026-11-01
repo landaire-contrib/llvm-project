@@ -55,6 +55,11 @@ MCRegister getRegNumForOperand(const MCInstrDesc &Desc, MCRegister Reg,
 /// 64-bit code under a 32-bit ABI.
 bool usesPPC64ABI(const Triple &TT);
 
+/// Returns true if addresses, the stack pointer and ELF objects are 64 bits
+/// wide. The Xbox 360 ILP32 environment runs 64-bit code with 32-bit
+/// addresses. LV2 keeps 64-bit addresses for its PPC64 ABI.
+bool has64BitAddresses(const Triple &TT);
+
 } // namespace PPC
 
 MCCodeEmitter *createPPCMCCodeEmitter(const MCInstrInfo &MCII,

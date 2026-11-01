@@ -1,8 +1,8 @@
-# RUN: llvm-mc --disassemble %s -triple powerpc64-unknown-xbox360 -mattr=+vmx128 \
+# RUN: llvm-mc --disassemble %s -triple powerpc64-unknown-xbox360-ilp32 -mattr=+vmx128 \
 # RUN:   -ppc-reg-with-percent-prefix | FileCheck %s
 # RUN: llvm-mc --disassemble %s -triple powerpc-unknown-xbox360 -mattr=+vmx128 \
 # RUN:   -ppc-reg-with-percent-prefix | FileCheck %s
-# RUN: llvm-mc --disassemble %s -triple powerpc64-unknown-xbox360 -mattr=+vmx128 \
+# RUN: llvm-mc --disassemble %s -triple powerpc64-unknown-xbox360-ilp32 -mattr=+vmx128 \
 # RUN:   2>&1 >/dev/null | FileCheck --check-prefix=WARN %s
 
 # CHECK: lvsl128 %v127, %r31, %r30

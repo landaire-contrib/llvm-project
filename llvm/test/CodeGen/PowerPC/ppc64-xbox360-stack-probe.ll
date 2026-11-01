@@ -1,4 +1,4 @@
-; RUN: llc -mtriple=powerpc64-unknown-xbox360 -verify-machineinstrs < %s \
+; RUN: llc -mtriple=powerpc64-unknown-xbox360-ilp32 -verify-machineinstrs < %s \
 ; RUN:   | FileCheck %s
 
 ; Each Xbox 360 thread stack is guarded by a single unmapped 4 KiB page, so

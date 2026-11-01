@@ -1092,7 +1092,8 @@ public:
   /// Tests whether the target uses the PPC64 ISA with 32-bit pointers.
   bool isPPC64ILP32ABI() const {
     return getArch() == Triple::ppc64 &&
-           (getOS() == Triple::Lv2 || getOS() == Triple::Xbox360);
+           (getOS() == Triple::Lv2 ||
+            (getOS() == Triple::Xbox360 && getEnvironment() == Triple::ILP32));
   }
 
   /// Tests whether the target 64-bit PowerPC big endian ABI is ELFv2.

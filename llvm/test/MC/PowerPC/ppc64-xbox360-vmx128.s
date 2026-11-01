@@ -1,4 +1,4 @@
-# RUN: llvm-mc -triple powerpc64-unknown-xbox360 --show-encoding \
+# RUN: llvm-mc -triple powerpc64-unknown-xbox360-ilp32 --show-encoding \
 # RUN:   -ppc-reg-with-percent-prefix %s | FileCheck %s
 # RUN: llvm-mc -triple powerpc-unknown-xbox360 -mattr=+vmx128 --show-encoding \
 # RUN:   -ppc-reg-with-percent-prefix %s | FileCheck %s

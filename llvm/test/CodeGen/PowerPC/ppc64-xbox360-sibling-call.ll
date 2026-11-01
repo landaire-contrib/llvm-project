@@ -1,10 +1,10 @@
-; RUN: llc -mtriple=powerpc64-unknown-xbox360 -verify-machineinstrs < %s \
+; RUN: llc -mtriple=powerpc64-unknown-xbox360-ilp32 -verify-machineinstrs < %s \
 ; RUN:   | FileCheck %s --check-prefixes=CHECK,STATIC
-; RUN: llc -mtriple=powerpc64-unknown-xbox360 -tailcallopt \
+; RUN: llc -mtriple=powerpc64-unknown-xbox360-ilp32 -tailcallopt \
 ; RUN:   -verify-machineinstrs < %s | FileCheck %s --check-prefixes=CHECK,STATIC
-; RUN: llc -mtriple=powerpc64-unknown-xbox360 -disable-ppc-sco \
+; RUN: llc -mtriple=powerpc64-unknown-xbox360-ilp32 -disable-ppc-sco \
 ; RUN:   -verify-machineinstrs < %s | FileCheck %s --check-prefix=NOSCO
-; RUN: llc -mtriple=powerpc64-unknown-xbox360 -relocation-model=pic \
+; RUN: llc -mtriple=powerpc64-unknown-xbox360-ilp32 -relocation-model=pic \
 ; RUN:   -verify-machineinstrs < %s | FileCheck %s --check-prefixes=CHECK,PIC
 ; RUN: llc -mtriple=powerpc-unknown-linux-gnu -verify-machineinstrs < %s \
 ; RUN:   | FileCheck %s --check-prefix=PPC32

@@ -485,8 +485,8 @@ PPCFrameLowering::findScratchRegister(MachineBasicBlock *MBB,
                                       Register *SR1,
                                       Register *SR2) const {
   RegScavenger RS;
-  Register R0 = Subtarget.usesPPC64ABI() ? PPC::X0 : PPC::R0;
-  Register R12 = Subtarget.usesPPC64ABI() ? PPC::X12 : PPC::R12;
+  Register R0 = Subtarget.has64BitAddresses() ? PPC::X0 : PPC::R0;
+  Register R12 = Subtarget.has64BitAddresses() ? PPC::X12 : PPC::R12;
 
   // Set the defaults for the two scratch registers.
   if (SR1)
@@ -530,7 +530,7 @@ PPCFrameLowering::findScratchRegister(MachineBasicBlock *MBB,
 
   // Get all the available registers in the block.
   BitVector BV = RS.getRegsAvailable(
-      Subtarget.usesPPC64ABI() ? &PPC::G8RCRegClass : &PPC::GPRCRegClass);
+      Subtarget.has64BitAddresses() ? &PPC::G8RCRegClass : &PPC::GPRCRegClass);
 
   // We shouldn't use callee-saved registers as scratch registers as they may be
   // available when looking for a candidate block for shrink wrapping but not
@@ -673,7 +673,7 @@ void PPCFrameLowering::emitPrologue(MachineFunction &MF,
   const bool SaveLRBeforeUpdate = HasFastMFLR || Subtarget.isXbox360();
 
   // Get processor type.
-  bool isPPC64 = Subtarget.usesPPC64ABI();
+  bool isPPC64 = Subtarget.has64BitAddresses();
   // Get the ABI.
   bool isSVR4ABI = Subtarget.isSVR4ABI();
   bool isELFv2ABI = Subtarget.isELFv2ABI();
@@ -1327,7 +1327,7 @@ void PPCFrameLowering::emitPrologue(MachineFunction &MF,
 
 void PPCFrameLowering::inlineStackProbe(MachineFunction &MF,
                                         MachineBasicBlock &PrologMBB) const {
-  bool isPPC64 = Subtarget.usesPPC64ABI();
+  bool isPPC64 = Subtarget.has64BitAddresses();
   const PPCTargetLowering &TLI = *Subtarget.getTargetLowering();
   const PPCInstrInfo &TII = *Subtarget.getInstrInfo();
   MachineFrameInfo &MFI = MF.getFrameInfo();
@@ -1647,7 +1647,7 @@ void PPCFrameLowering::emitEpilogue(MachineFunction &MF,
   int64_t FrameSize = MFI.getStackSize();
 
   // Get processor type.
-  bool isPPC64 = Subtarget.usesPPC64ABI();
+  bool isPPC64 = Subtarget.has64BitAddresses();
 
   // Check if the link register (LR) has been saved.
   PPCFunctionInfo *FI = MF.getInfo<PPCFunctionInfo>();
@@ -2097,7 +2097,7 @@ void PPCFrameLowering::determineCalleeSaves(MachineFunction &MF,
 
   //  Save R31 if necessary
   int FPSI = FI->getFramePointerSaveIndex();
-  const bool isPPC64 = Subtarget.usesPPC64ABI();
+  const bool isPPC64 = Subtarget.has64BitAddresses();
   const bool Preserve64BitGPRs = Subtarget.isPPC64();
   const unsigned GPRSaveSize = Preserve64BitGPRs ? 8 : 4;
   auto getGPRSaveReg = [&](Register Reg) -> Register {
@@ -2711,7 +2711,7 @@ eliminateCallFramePseudoInstr(MachineFunction &MF, MachineBasicBlock &MBB,
       I->getOpcode() == PPC::ADJCALLSTACKUP) {
     // Add (actually subtract) back the amount the callee popped on return.
     if (int CalleeAmt =  I->getOperand(1).getImm()) {
-      bool is64Bit = Subtarget.usesPPC64ABI();
+      bool is64Bit = Subtarget.has64BitAddresses();
       CalleeAmt *= -1;
       unsigned StackReg = is64Bit ? PPC::X1 : PPC::R1;
       unsigned TmpReg = is64Bit ? PPC::X0 : PPC::R0;

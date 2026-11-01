@@ -5325,7 +5325,7 @@ static SDValue EmitTailCallStoreFPAndRetAddr(SelectionDAG &DAG, SDValue Chain,
     MachineFunction &MF = DAG.getMachineFunction();
     const PPCSubtarget &Subtarget = MF.getSubtarget<PPCSubtarget>();
     const PPCFrameLowering *FL = Subtarget.getFrameLowering();
-    int SlotSize = Subtarget.usesPPC64ABI() ? 8 : 4;
+    int SlotSize = Subtarget.has64BitAddresses() ? 8 : 4;
     int NewRetAddrLoc = SPDiff + FL->getReturnSaveOffset();
     int NewRetAddr = MF.getFrameInfo().CreateFixedObject(SlotSize,
                                                          NewRetAddrLoc, true);
@@ -14263,7 +14263,7 @@ unsigned PPCTargetLowering::getStackProbeSize(const MachineFunction &MF) const {
 MachineBasicBlock *
 PPCTargetLowering::emitProbedAlloca(MachineInstr &MI,
                                     MachineBasicBlock *MBB) const {
-  const bool isPPC64 = Subtarget.usesPPC64ABI();
+  const bool isPPC64 = Subtarget.has64BitAddresses();
   MachineFunction *MF = MBB->getParent();
   const TargetInstrInfo *TII = Subtarget.getInstrInfo();
   DebugLoc DL = MI.getDebugLoc();
