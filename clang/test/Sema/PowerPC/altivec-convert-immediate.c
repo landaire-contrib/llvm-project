@@ -1,6 +1,6 @@
 // REQUIRES: powerpc-registered-target
-// RUN: %clang_cc1 -triple powerpc64-unknown-xbox360 -fsyntax-only -verify %s
-// RUN: %clang_cc1 -triple powerpc64-unknown-xbox360 -x c++ -fsyntax-only -verify %s
+// RUN: %clang_cc1 -triple powerpc64-unknown-xbox360-ilp32 -fsyntax-only -verify %s
+// RUN: %clang_cc1 -triple powerpc64-unknown-xbox360-ilp32 -x c++ -fsyntax-only -verify %s
 // RUN: %clang_cc1 -triple powerpc64-unknown-linux-gnu -target-feature +altivec -fsyntax-only -verify %s
 // RUN: %clang_cc1 -triple powerpc-unknown-linux-gnu -target-feature +altivec -fsyntax-only -verify %s
 // RUN: %clang_cc1 -triple powerpc64le-unknown-linux-gnu -target-feature +altivec -fsyntax-only -verify %s

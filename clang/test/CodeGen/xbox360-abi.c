@@ -1,7 +1,7 @@
-// RUN: %clang_cc1 -triple powerpc64-unknown-xbox360 -emit-llvm -o - %s | FileCheck %s
-// RUN: not %clang_cc1 -triple powerpc64-unknown-xbox360 -target-abi elfv1 \
+// RUN: %clang_cc1 -triple powerpc64-unknown-xbox360-ilp32 -emit-llvm -o - %s | FileCheck %s
+// RUN: not %clang_cc1 -triple powerpc64-unknown-xbox360-ilp32 -target-abi elfv1 \
 // RUN:   -emit-llvm -o /dev/null %s 2>&1 | FileCheck --check-prefix=INVALID %s
-// RUN: not %clang_cc1 -triple powerpc64-unknown-xbox360 -DVA_AGGREGATE \
+// RUN: not %clang_cc1 -triple powerpc64-unknown-xbox360-ilp32 -DVA_AGGREGATE \
 // RUN:   -emit-llvm -o /dev/null %s 2>&1 | FileCheck --check-prefix=VAAGG %s
 
 // INVALID: error: unknown target ABI 'elfv1'

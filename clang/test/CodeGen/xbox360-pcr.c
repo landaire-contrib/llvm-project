@@ -1,5 +1,5 @@
-// RUN: %clang_cc1 -triple powerpc64-unknown-xbox360 -Os -emit-llvm -o - %s | FileCheck %s --check-prefix=IR
-// RUN: %clang_cc1 -triple powerpc64-unknown-xbox360 -Os -S -o - %s | FileCheck %s --check-prefix=ASM
+// RUN: %clang_cc1 -triple powerpc64-unknown-xbox360-ilp32 -Os -emit-llvm -o - %s | FileCheck %s --check-prefix=IR
+// RUN: %clang_cc1 -triple powerpc64-unknown-xbox360-ilp32 -Os -S -o - %s | FileCheck %s --check-prefix=ASM
 
 // Each evaluation reads the current processor's r13. It is not a TLS value.
 // IR-LABEL: define{{.*}} i32 @read_base(

@@ -1,9 +1,9 @@
 // REQUIRES: powerpc-registered-target
-// RUN: %clang_cc1 -triple powerpc64-unknown-xbox360 -mrelocation-model pic \
+// RUN: %clang_cc1 -triple powerpc64-unknown-xbox360-ilp32 -mrelocation-model pic \
 // RUN:   -pic-level 1 -O2 -S -o - %s | FileCheck --check-prefix=SMALL %s
-// RUN: %clang_cc1 -triple powerpc64-unknown-xbox360 -mrelocation-model pic \
+// RUN: %clang_cc1 -triple powerpc64-unknown-xbox360-ilp32 -mrelocation-model pic \
 // RUN:   -pic-level 2 -O2 -S -o - %s | FileCheck --check-prefix=BIG %s
-// RUN: %clang_cc1 -triple powerpc64-unknown-xbox360 -mrelocation-model pic \
+// RUN: %clang_cc1 -triple powerpc64-unknown-xbox360-ilp32 -mrelocation-model pic \
 // RUN:   -pic-level 2 -emit-llvm -o - %s | FileCheck --check-prefix=IR %s
 
 extern int global;

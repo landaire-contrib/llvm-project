@@ -1,7 +1,7 @@
 # REQUIRES: powerpc-registered-target
-# RUN: %clang --target=powerpc64-unknown-xbox360 -c %s -o %t.o
+# RUN: %clang --target=powerpc64-unknown-xbox360-ilp32 -c %s -o %t.o
 # RUN: llvm-objdump -d --mattr=+vmx128 %t.o | FileCheck %s
-# RUN: not %clang --target=powerpc64-unknown-xbox360 -mno-vmx128 -c %s \
+# RUN: not %clang --target=powerpc64-unknown-xbox360-ilp32 -mno-vmx128 -c %s \
 # RUN:   -o /dev/null 2>&1 | FileCheck --check-prefix=ERR %s
 
 # The Xbox 360 assembler accepts VMX128 by default.

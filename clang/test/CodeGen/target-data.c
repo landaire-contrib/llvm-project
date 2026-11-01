@@ -90,7 +90,7 @@
 // RUN: FileCheck %s -check-prefix=PS3
 // PS3: target datalayout = "E-m:e-p:32:32-Fi64-i64:64-i128:128-n32:64"
 
-// RUN: %clang_cc1 -triple powerpc64-unknown-xbox360 -o - -emit-llvm %s | \
+// RUN: %clang_cc1 -triple powerpc64-unknown-xbox360-ilp32 -o - -emit-llvm %s | \
 // RUN: FileCheck %s -check-prefix=XBOX360
 // XBOX360: target datalayout = "E-m:e-p:32:32-Fn32-i64:64-i128:128-n32:64"
 

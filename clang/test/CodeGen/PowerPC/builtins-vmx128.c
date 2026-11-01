@@ -1,9 +1,9 @@
 // REQUIRES: powerpc-registered-target
-// RUN: %clang_cc1 -triple powerpc64-unknown-xbox360 -O1 -emit-llvm %s -o - \
+// RUN: %clang_cc1 -triple powerpc64-unknown-xbox360-ilp32 -O1 -emit-llvm %s -o - \
 // RUN:   | FileCheck %s
 // RUN: %clang_cc1 -triple powerpc-unknown-unknown -target-feature +altivec \
 // RUN:   -target-feature +vmx128 -O1 -emit-llvm %s -o - | FileCheck %s
-// RUN: not %clang_cc1 -triple powerpc64-unknown-xbox360 \
+// RUN: not %clang_cc1 -triple powerpc64-unknown-xbox360-ilp32 \
 // RUN:   -target-feature -vmx128 -emit-llvm-only %s 2>&1 \
 // RUN:   | FileCheck %s --check-prefix=NOVMX128
 // RUN: not %clang_cc1 -triple powerpc64-unknown-linux-gnu \

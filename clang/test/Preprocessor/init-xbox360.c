@@ -1,5 +1,5 @@
-// RUN: %clang_cc1 -E -dM -ffreestanding -triple=powerpc64-unknown-xbox360 < /dev/null | FileCheck -match-full-lines %s
-// RUN: %clang_cc1 -fsyntax-only -ffreestanding -triple=powerpc64-unknown-xbox360 %s
+// RUN: %clang_cc1 -E -dM -ffreestanding -triple=powerpc64-unknown-xbox360-ilp32 < /dev/null | FileCheck -match-full-lines %s
+// RUN: %clang_cc1 -fsyntax-only -ffreestanding -triple=powerpc64-unknown-xbox360-ilp32 %s
 
 // CHECK-DAG: #define _M_PPC 5401
 // CHECK-DAG: #define _M_PPCBE 1

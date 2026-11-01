@@ -1,11 +1,11 @@
 // REQUIRES: powerpc-registered-target
-// RUN: %clang_cc1 -triple powerpc64-unknown-xbox360 -Os -ffreestanding \
+// RUN: %clang_cc1 -triple powerpc64-unknown-xbox360-ilp32 -Os -ffreestanding \
 // RUN:   -emit-llvm -o - %s | FileCheck %s --check-prefix=IR
-// RUN: %clang_cc1 -triple powerpc64-unknown-xbox360 -Os -ffreestanding \
+// RUN: %clang_cc1 -triple powerpc64-unknown-xbox360-ilp32 -Os -ffreestanding \
 // RUN:   -mrelocation-model static -S -o - %s | FileCheck %s --check-prefix=ASM
-// RUN: %clang_cc1 -triple powerpc64-unknown-xbox360 -Os -ffreestanding \
+// RUN: %clang_cc1 -triple powerpc64-unknown-xbox360-ilp32 -Os -ffreestanding \
 // RUN:   -fno-optimize-sibling-calls -S -o - %s | FileCheck %s --check-prefix=DISABLED
-// RUN: %clang_cc1 -triple powerpc64-unknown-xbox360 -Os -ffreestanding \
+// RUN: %clang_cc1 -triple powerpc64-unknown-xbox360-ilp32 -Os -ffreestanding \
 // RUN:   -mrelocation-model pic -S -o - %s | FileCheck %s --check-prefix=PIC
 
 extern void process_item(void *);

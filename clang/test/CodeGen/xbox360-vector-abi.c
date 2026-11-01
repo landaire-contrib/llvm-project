@@ -1,6 +1,6 @@
-// RUN: %clang_cc1 -triple powerpc64-unknown-xbox360 -target-feature +altivec \
+// RUN: %clang_cc1 -triple powerpc64-unknown-xbox360-ilp32 -target-feature +altivec \
 // RUN:   -emit-llvm -o - %s | FileCheck %s
-// RUN: not %clang_cc1 -triple powerpc64-unknown-xbox360 \
+// RUN: not %clang_cc1 -triple powerpc64-unknown-xbox360-ilp32 \
 // RUN:   -target-feature +altivec -DVA_VECTOR -emit-llvm -o /dev/null %s 2>&1 \
 // RUN:   | FileCheck --check-prefix=VAVEC %s
 

@@ -1,4 +1,4 @@
-// RUN: %clang_cc1 -triple powerpc64-unknown-xbox360 -target-feature +altivec \
+// RUN: %clang_cc1 -triple powerpc64-unknown-xbox360-ilp32 -target-feature +altivec \
 // RUN:   -std=c17 -Wno-deprecated-non-prototype -fsyntax-only -verify %s
 // RUN: %clang_cc1 -triple powerpc64-unknown-linux-gnu -target-feature +altivec \
 // RUN:   -std=c17 -Wno-deprecated-non-prototype -fsyntax-only \

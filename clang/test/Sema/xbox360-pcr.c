@@ -1,4 +1,4 @@
-// RUN: %clang_cc1 -triple powerpc64-unknown-xbox360 -fsyntax-only -verify=xbox %s
+// RUN: %clang_cc1 -triple powerpc64-unknown-xbox360-ilp32 -fsyntax-only -verify=xbox %s
 // RUN: %clang_cc1 -triple powerpc64-unknown-linux-gnu -fsyntax-only -verify=baseline %s
 // RUN: %clang_cc1 -triple powerpc-unknown-linux-gnu -fsyntax-only -verify=baseline %s
 
