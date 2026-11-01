@@ -127,8 +127,11 @@ bool SemaPPC::CheckPPCBuiltinFunctionCall(const TargetInfo &TI,
     return Diag(TheCall->getBeginLoc(), diag::err_64_bit_builtin_32_bit_tgt)
            << TheCall->getSourceRange();
 
+  // The builtin returns the 32-bit address of a title's processor control
+  // region.
   if (BuiltinID == PPC::BI__builtin_ppc_get_pcr &&
-      TI.getTriple().getOS() != llvm::Triple::Xbox360)
+      (TI.getTriple().getOS() != llvm::Triple::Xbox360 ||
+       !TI.getTriple().isPPC64ILP32ABI()))
     return Diag(TheCall->getBeginLoc(), diag::err_builtin_target_unsupported)
            << TheCall->getSourceRange();
 

@@ -94,6 +94,10 @@
 // RUN: FileCheck %s -check-prefix=XBOX360
 // XBOX360: target datalayout = "E-m:e-p:32:32-Fn32-i64:64-i128:128-n32:64"
 
+// RUN: %clang_cc1 -triple powerpc64-unknown-xbox360 -o - -emit-llvm %s | \
+// RUN: FileCheck %s -check-prefix=XBOX360-HV
+// XBOX360-HV: target datalayout = "E-m:e-Fn32-i64:64-i128:128-n32:64"
+
 // RUN: %clang_cc1 -triple wasm32-unknown-unknown -o - -emit-llvm %s | \
 // RUN: FileCheck %s -check-prefix=WEBASSEMBLY32
 // WEBASSEMBLY32: target datalayout = "e-m:e-p:32:32-p10:8:8-p20:8:8-i64:64-i128:128-n32:64-S128-ni:1:10:20"
