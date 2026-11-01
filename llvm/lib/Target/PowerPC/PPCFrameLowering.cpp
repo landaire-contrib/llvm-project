@@ -512,8 +512,12 @@ PPCFrameLowering::findScratchRegister(MachineBasicBlock *MBB,
   // available when looking for a candidate block for shrink wrapping but not
   // available when the actual prologue/epilogue is being emitted because they
   // were added as live-in to the prologue block by PrologueEpilogueInserter.
+  // The Xbox 360 saves 64-bit registers but uses 32-bit scratch registers, so
+  // reset every alias of a callee-saved register.
   for (int i = 0; CSRegs[i]; ++i)
-    BV.reset(CSRegs[i]);
+    for (MCRegAliasIterator AI(CSRegs[i], RegInfo, /*IncludeSelf=*/true);
+         AI.isValid(); ++AI)
+      BV.reset(*AI);
 
   // Set the first scratch register to the first available one.
   if (SR1) {
