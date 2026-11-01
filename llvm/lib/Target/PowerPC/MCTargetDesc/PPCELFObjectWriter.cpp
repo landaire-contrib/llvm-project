@@ -359,6 +359,53 @@ unsigned PPCELFObjectWriter::getRelocType(const MCFixup &Fixup,
       break;
     case PPC::fixup_ppc_half16ds:
     case PPC::fixup_ppc_half16dq:
+      if (!is64Bit()) {
+        // The 32-bit ABI has no DS- or DQ-form relocations. As GNU as does,
+        // use the D-form relocation. The linker keeps the low bits of the
+        // instruction, which belong to its opcode.
+        switch (Spec) {
+        default:
+          reportError(Loc, "unsupported relocation type");
+          break;
+        case PPC::S_LO:
+          Type = ELF::R_PPC_ADDR16_LO;
+          break;
+        case PPC::S_None:
+          Type = ELF::R_PPC_ADDR16;
+          break;
+        case PPC::S_GOT:
+          Type = ELF::R_PPC_GOT16;
+          break;
+        case PPC::S_GOT_LO:
+          Type = ELF::R_PPC_GOT16_LO;
+          break;
+        case PPC::S_TPREL:
+          Type = ELF::R_PPC_TPREL16;
+          break;
+        case PPC::S_TPREL_LO:
+          Type = ELF::R_PPC_TPREL16_LO;
+          break;
+        case PPC::S_DTPREL:
+          Type = ELF::R_PPC_DTPREL16;
+          break;
+        case PPC::S_DTPREL_LO:
+          Type = ELF::R_PPC_DTPREL16_LO;
+          break;
+        case PPC::S_GOT_TPREL:
+          Type = ELF::R_PPC_GOT_TPREL16;
+          break;
+        case PPC::S_GOT_TPREL_LO:
+          Type = ELF::R_PPC_GOT_TPREL16_LO;
+          break;
+        case PPC::S_GOT_DTPREL:
+          Type = ELF::R_PPC_GOT_DTPREL16;
+          break;
+        case PPC::S_GOT_DTPREL_LO:
+          Type = ELF::R_PPC_GOT_DTPREL16_LO;
+          break;
+        }
+        break;
+      }
       switch (Spec) {
       default:
         reportError(Loc, "unsupported relocation type");
