@@ -80,6 +80,13 @@ static unsigned computeBasePointerSaveOffset(const PPCSubtarget &STI) {
   return STI.isPPC64() ? -16U : -8U;
 }
 
+// The 32-bit ELF ABI saves CR2-CR4 to a frame slot after the frame is claimed.
+// The Xbox 360 with 64-bit addresses does the same: its LR doubleword at -8
+// leaves no CR word below the back chain.
+static bool savesCRToFrameSlot(const PPCSubtarget &STI) {
+  return STI.is32BitELFABI() || (STI.isXbox360() && STI.has64BitAddresses());
+}
+
 static unsigned computeCRSaveOffset(const PPCSubtarget &STI) {
   if (STI.isXbox360())
     return -4U;
@@ -662,7 +669,8 @@ void PPCFrameLowering::emitPrologue(MachineFunction &MF,
   // AIX assembler does not support cfi directives.
   const bool needsCFI = MF.needsFrameMoves() && !Subtarget.isAIXABI();
   auto getDwarfRegNum = [&](MCRegister Reg) {
-    if (Subtarget.isXbox360() && PPC::G8RCRegClass.contains(Reg))
+    if (Subtarget.isXbox360() && !Subtarget.has64BitAddresses() &&
+        PPC::G8RCRegClass.contains(Reg))
       Reg = RegInfo->getSubReg(Reg, PPC::sub_32);
     return MRI->getDwarfRegNum(Reg, true);
   };
@@ -953,7 +961,8 @@ void PPCFrameLowering::emitPrologue(MachineFunction &MF,
       if (!PPC::VRRC128RegClass.contains(Reg))
         continue;
       int64_t Offset = MFI.getObjectOffset(I.getFrameIdx());
-      BuildMI(MBB, MBBI, dl, TII.get(PPC::LI), TempReg).addImm(Offset);
+      BuildMI(MBB, MBBI, dl, TII.get(isPPC64 ? PPC::LI8 : PPC::LI), TempReg)
+          .addImm(Offset);
       BuildMI(MBB, MBBI, dl, TII.get(PPC::STVX128))
           .addReg(Reg, getKillRegState(!MF.getRegInfo().isLiveIn(Reg)))
           .addReg(SPReg)
@@ -1290,7 +1299,8 @@ void PPCFrameLowering::emitPrologue(MachineFunction &MF,
 
       // For 64-bit SVR4 when we have spilled CRs, the spill location
       // is SP+8, not a frame-relative slot.
-      if (isSVR4ABI && isPPC64 && (PPC::CR2 <= Reg && Reg <= PPC::CR4)) {
+      if (isSVR4ABI && isPPC64 && !savesCRToFrameSlot(Subtarget) &&
+          (PPC::CR2 <= Reg && Reg <= PPC::CR4)) {
         // In the ELFv1 ABI, only CR2 is noted in CFI and stands in for
         // the whole CR word.  In the ELFv2 ABI, every CR that was
         // actually saved gets its own CFI record.
@@ -2110,12 +2120,12 @@ void PPCFrameLowering::determineCalleeSaves(MachineFunction &MF,
   Register PICBaseSaveReg = getGPRSaveReg(PPC::R30);
   MachineFrameInfo &MFI = MF.getFrameInfo();
 
-  // The Xbox 360 LR save word is below the incoming stack pointer. Reserve it
+  // The Xbox 360 LR save slot is below the incoming stack pointer. Reserve it
   // so that no local or spill slot overlaps it.
   if (Subtarget.isXbox360() && FI->mustSaveLR() &&
       !FI->getReturnAddrSaveIndex())
-    FI->setReturnAddrSaveIndex(
-        MFI.CreateFixedObject(4, getReturnSaveOffset(), true));
+    FI->setReturnAddrSaveIndex(MFI.CreateFixedObject(
+        isPPC64 ? 8 : 4, getReturnSaveOffset(), true));
 
   // If the frame pointer save index hasn't been defined yet.
   if (!FPSI && needsFP(MF)) {
@@ -2185,9 +2195,14 @@ void PPCFrameLowering::determineCalleeSaves(MachineFunction &MF,
                                 : Subtarget.isPPC64()  ? 8
                                 : Subtarget.isAIXABI() ? 4
                                                        : -4;
+    // The Xbox 360 with 64-bit addresses saves CR to an ordinary frame slot.
+    // ELF64 CFI factors offsets by 8, so the slot is 8-byte aligned.
     int FrameIdx =
-        MFI.CreateFixedObject(SpillSize, SpillOffset,
-                              /* IsImmutable */ true, /* IsAliased */ false);
+        Subtarget.isXbox360() && isPPC64
+            ? MFI.CreateSpillStackObject(SpillSize, Align(8))
+            : MFI.CreateFixedObject(SpillSize, SpillOffset,
+                                    /* IsImmutable */ true,
+                                    /* IsAliased */ false);
     FI->setCRSpillFrameIndex(FrameIdx);
   }
 }
@@ -2288,8 +2303,8 @@ void PPCFrameLowering::processFunctionBeforeFrameFinalized(MachineFunction &MF,
   PPCFunctionInfo *PFI = MF.getInfo<PPCFunctionInfo>();
   const TargetRegisterInfo *TRI = Subtarget.getRegisterInfo();
 
-  // The Xbox 360 CR save word is the word below the back chain. The 8-byte
-  // register save areas start below the doubleword that contains it.
+  // The Xbox 360 stores LR, and CR with 32-bit addresses, in the doubleword
+  // below the back chain. The 8-byte register save areas start below it.
   int64_t LowerBound = Subtarget.isXbox360() ? -8 : 0;
 
   // Take into account stack space reserved for tail calls.
@@ -2608,7 +2623,7 @@ bool PPCFrameLowering::spillCalleeSavedRegisters(
     // Insert the spill to the stack frame.
     if (IsCRField) {
       PPCFunctionInfo *FuncInfo = MF->getInfo<PPCFunctionInfo>();
-      if (!Subtarget.is32BitELFABI()) {
+      if (!savesCRToFrameSlot(Subtarget)) {
         // The actual spill will happen at the start of the prologue.
         FuncInfo->addMustSaveCR(Reg);
       } else {
@@ -2775,7 +2790,7 @@ bool PPCFrameLowering::restoreCalleeSavedRegisters(
 
     // Restore of callee saved condition register field is handled during
     // epilogue insertion.
-    if (isCalleeSavedCR(Reg) && !Subtarget.is32BitELFABI())
+    if (isCalleeSavedCR(Reg) && !savesCRToFrameSlot(Subtarget))
       continue;
 
     if (Reg == PPC::CR2) {
@@ -2854,8 +2869,8 @@ bool PPCFrameLowering::restoreCalleeSavedRegisters(
 
   // If we haven't yet spilled the CRs, do so now.
   if (CR2Spilled || CR3Spilled || CR4Spilled) {
-    assert(Subtarget.is32BitELFABI() &&
-           "Only set CR[2|3|4]Spilled on 32-bit SVR4.");
+    assert(savesCRToFrameSlot(Subtarget) &&
+           "Only set CR[2|3|4]Spilled when CR is saved to a frame slot.");
     bool is31 = needsFP(*MF);
     restoreCRs(is31, CR2Spilled, CR3Spilled, CR4Spilled, MBB, I, CSI, CSIIndex);
   }
