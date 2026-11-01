@@ -350,6 +350,18 @@ def STQCX : XForm_1_memOp<31, 182, (outs), (ins g8prc:$RST, (memrr $RA, $RB):$ad
                           isPPC64, isRecordForm;
 }
 
+// The doubleword forms of LWARX_PROT and STWCX_PROT, and the read of the MSR
+// that their loops restore. The MSR is 64 bits wide on every Xbox 360 triple.
+let mayLoad = 1, hasSideEffects = 1, Size = 8, Uses = [X13] in
+def LDARX_PROT : PPCEmitTimePseudo<(outs g8rc:$RST), (ins memrr:$addr),
+                                   "#LDARX_PROT", []>;
+let Defs = [CR0], mayStore = 1, hasSideEffects = 1, Size = 8 in
+def STDCX_PROT : PPCEmitTimePseudo<(outs), (ins g8rc:$RST, memrr:$addr,
+                                                g8rc:$msr),
+                                   "#STDCX_PROT", []>;
+let hasSideEffects = 1, Size = 4 in
+def MFMSR_PROT : PPCEmitTimePseudo<(outs g8rc:$RST), (ins), "#MFMSR_PROT", []>;
+
 def SPLIT_QUADWORD : PPCCustomInserterPseudo<(outs g8rc:$lo, g8rc:$hi),
                                              (ins g8prc:$src),
                                              "#SPLIT_QUADWORD", []>;

@@ -1487,7 +1487,11 @@ PPCTargetLowering::PPCTargetLowering(const PPCTargetMachine &TM,
   setMinimumBitTestCmps(PPCMinimumBitTestCmps);
 
   setMinFunctionAlignment(Align(4));
-  setMinCmpXchgSizeInBits(Subtarget.hasPartwordAtomics() ? 8 : 32);
+  // Protected byte and halfword compare-exchanges reach the custom inserter,
+  // which masks the containing word.
+  bool PartwordCmpXchg =
+      Subtarget.hasPartwordAtomics() || Subtarget.hasProtectedReservations();
+  setMinCmpXchgSizeInBits(PartwordCmpXchg ? 8 : 32);
 
   auto CPUDirective = Subtarget.getCPUDirective();
   switch (CPUDirective) {
@@ -13628,6 +13632,15 @@ PPCTargetLowering::EmitAtomicBinary(MachineInstr &MI, MachineBasicBlock *BB,
     break;
   }
 
+  // Xbox 360 reservations run with external interrupts disabled. Its CPU has
+  // no partword reservations, so EmitPartwordAtomicBinary masks a word.
+  const bool Protect = Subtarget.hasProtectedReservations();
+  if (Protect) {
+    assert(AtomicSize >= 4 && "Protected reservations are word or doubleword");
+    LoadMnemonic = AtomicSize == 8 ? PPC::LDARX_PROT : PPC::LWARX_PROT;
+    StoreMnemonic = AtomicSize == 8 ? PPC::STDCX_PROT : PPC::STWCX_PROT;
+  }
+
   const BasicBlock *LLVM_BB = BB->getBasicBlock();
   MachineFunction *F = BB->getParent();
   MachineFunction::iterator It = ++BB->getIterator();
@@ -13641,10 +13654,14 @@ PPCTargetLowering::EmitAtomicBinary(MachineInstr &MI, MachineBasicBlock *BB,
   MachineBasicBlock *loopMBB = F->CreateMachineBasicBlock(LLVM_BB);
   MachineBasicBlock *loop2MBB =
     CmpOpcode ? F->CreateMachineBasicBlock(LLVM_BB) : nullptr;
+  MachineBasicBlock *releaseMBB =
+      Protect && CmpOpcode ? F->CreateMachineBasicBlock(LLVM_BB) : nullptr;
   MachineBasicBlock *exitMBB = F->CreateMachineBasicBlock(LLVM_BB);
   F->insert(It, loopMBB);
   if (CmpOpcode)
     F->insert(It, loop2MBB);
+  if (releaseMBB)
+    F->insert(It, releaseMBB);
   F->insert(It, exitMBB);
   exitMBB->splice(exitMBB->begin(), BB,
                   std::next(MachineBasicBlock::iterator(MI)), BB->end());
@@ -13657,7 +13674,13 @@ PPCTargetLowering::EmitAtomicBinary(MachineInstr &MI, MachineBasicBlock *BB,
 
   //  thisMBB:
   //   ...
+  //   [mfmsr msr]
   //   fallthrough --> loopMBB
+  Register MsrReg;
+  if (Protect) {
+    MsrReg = RegInfo.createVirtualRegister(&PPC::G8RCRegClass);
+    BuildMI(BB, dl, TII->get(PPC::MFMSR_PROT), MsrReg);
+  }
   BB->addSuccessor(loopMBB);
 
   //  loopMBB:
@@ -13671,11 +13694,19 @@ PPCTargetLowering::EmitAtomicBinary(MachineInstr &MI, MachineBasicBlock *BB,
   //  loopMBB:
   //   l[wd]arx dest, ptr
   //   cmpl?[wd] dest, incr
-  //   bgt exitMBB
+  //   bgt exitMBB [releaseMBB]
   //  loop2MBB:
   //   st[wd]cx. dest, ptr
   //   bne- loopMBB
-  //   fallthrough --> exitMBB
+  //   fallthrough --> exitMBB [b exitMBB]
+  //  [releaseMBB:]
+  //   [st[wd]cx. dest, ptr]
+  //   [fallthrough --> exitMBB]
+
+  // With protected reservations, l[wd]arx is LWARX_PROT/LDARX_PROT and each
+  // st[wd]cx. is STWCX_PROT/STDCX_PROT restoring msr. A path that leaves
+  // without storing a new value stores the observed one in releaseMBB to end
+  // the reservation and restore the MSR.
 
   BB = loopMBB;
   BuildMI(BB, dl, TII->get(LoadMnemonic), dest)
@@ -13693,22 +13724,38 @@ PPCTargetLowering::EmitAtomicBinary(MachineInstr &MI, MachineBasicBlock *BB,
     } else
       BuildMI(BB, dl, TII->get(CmpOpcode), CrReg).addReg(dest).addReg(incr);
 
+    MachineBasicBlock *NoStoreMBB = releaseMBB ? releaseMBB : exitMBB;
     BuildMI(BB, dl, TII->get(PPC::BCC))
         .addImm(CmpPred)
         .addReg(CrReg)
-        .addMBB(exitMBB);
+        .addMBB(NoStoreMBB);
     BB->addSuccessor(loop2MBB);
-    BB->addSuccessor(exitMBB);
+    BB->addSuccessor(NoStoreMBB);
     BB = loop2MBB;
   }
-  BuildMI(BB, dl, TII->get(StoreMnemonic))
-    .addReg(TmpReg).addReg(ptrA).addReg(ptrB);
+  MachineInstrBuilder Store = BuildMI(BB, dl, TII->get(StoreMnemonic))
+                                  .addReg(TmpReg)
+                                  .addReg(ptrA)
+                                  .addReg(ptrB);
+  if (Protect)
+    Store.addReg(MsrReg);
   BuildMI(BB, dl, TII->get(PPC::BCC))
       .addImm(PPC::PRED_NE_MINUS)
       .addReg(PPC::CR0)
       .addMBB(loopMBB);
   BB->addSuccessor(loopMBB);
   BB->addSuccessor(exitMBB);
+
+  if (releaseMBB) {
+    BuildMI(BB, dl, TII->get(PPC::B)).addMBB(exitMBB);
+    BB = releaseMBB;
+    BuildMI(BB, dl, TII->get(StoreMnemonic))
+        .addReg(dest)
+        .addReg(ptrA)
+        .addReg(ptrB)
+        .addReg(MsrReg);
+    BB->addSuccessor(exitMBB);
+  }
 
   //  exitMBB:
   //   ...
@@ -13795,8 +13842,10 @@ MachineBasicBlock *PPCTargetLowering::EmitPartwordAtomicBinary(
     MI.getOperand(3).setReg(ValueReg);
     incr = ValueReg;
   }
-  // If we support part-word atomic mnemonics, just use them
-  if (Subtarget.hasPartwordAtomics())
+  // If we support part-word atomic mnemonics, just use them. Protected
+  // reservations exist for words and doublewords only.
+  const bool Protect = Subtarget.hasProtectedReservations();
+  if (Subtarget.hasPartwordAtomics() && !Protect)
     return EmitAtomicBinary(MI, BB, is8bit ? 1 : 2, BinOpcode, CmpOpcode,
                             CmpPred);
 
@@ -13804,7 +13853,7 @@ MachineBasicBlock *PPCTargetLowering::EmitPartwordAtomicBinary(
   // lwarx/stwcx are 32 bits.  With the 32-bit atomics we can use address
   // registers without caring whether they're 32 or 64, but here we're
   // doing actual arithmetic on the addresses.
-  bool is64bit = Subtarget.isPPC64();
+  bool is64bit = Subtarget.has64BitAddresses();
   bool isLittleEndian = Subtarget.isLittleEndian();
   unsigned ZeroReg = is64bit ? PPC::ZERO8 : PPC::ZERO;
 
@@ -13818,10 +13867,14 @@ MachineBasicBlock *PPCTargetLowering::EmitPartwordAtomicBinary(
   MachineBasicBlock *loopMBB = F->CreateMachineBasicBlock(LLVM_BB);
   MachineBasicBlock *loop2MBB =
       CmpOpcode ? F->CreateMachineBasicBlock(LLVM_BB) : nullptr;
+  MachineBasicBlock *releaseMBB =
+      Protect && CmpOpcode ? F->CreateMachineBasicBlock(LLVM_BB) : nullptr;
   MachineBasicBlock *exitMBB = F->CreateMachineBasicBlock(LLVM_BB);
   F->insert(It, loopMBB);
   if (CmpOpcode)
     F->insert(It, loop2MBB);
+  if (releaseMBB)
+    F->insert(It, releaseMBB);
   F->insert(It, exitMBB);
   exitMBB->splice(exitMBB->begin(), BB,
                   std::next(MachineBasicBlock::iterator(MI)), BB->end());
@@ -13916,8 +13969,17 @@ MachineBasicBlock *PPCTargetLowering::EmitPartwordAtomicBinary(
       .addReg(Mask2Reg)
       .addReg(ShiftReg);
 
+  // With protected reservations, the MSR is read here, the loop uses
+  // LWARX_PROT and STWCX_PROT, and min/max store the observed word in
+  // releaseMBB when they leave without a new value.
+  Register MsrReg;
+  if (Protect) {
+    MsrReg = RegInfo.createVirtualRegister(&PPC::G8RCRegClass);
+    BuildMI(BB, dl, TII->get(PPC::MFMSR_PROT), MsrReg);
+  }
+
   BB = loopMBB;
-  BuildMI(BB, dl, TII->get(PPC::LWARX), TmpDestReg)
+  BuildMI(BB, dl, TII->get(Protect ? PPC::LWARX_PROT : PPC::LWARX), TmpDestReg)
       .addReg(ZeroReg)
       .addReg(PtrReg);
   if (BinOpcode)
@@ -13950,25 +14012,40 @@ MachineBasicBlock *PPCTargetLowering::EmitPartwordAtomicBinary(
       CmpReg = incr;
     }
     BuildMI(BB, dl, TII->get(CmpOpcode), CrReg).addReg(ValueReg).addReg(CmpReg);
+    MachineBasicBlock *NoStoreMBB = releaseMBB ? releaseMBB : exitMBB;
     BuildMI(BB, dl, TII->get(PPC::BCC))
         .addImm(CmpPred)
         .addReg(CrReg)
-        .addMBB(exitMBB);
+        .addMBB(NoStoreMBB);
     BB->addSuccessor(loop2MBB);
-    BB->addSuccessor(exitMBB);
+    BB->addSuccessor(NoStoreMBB);
     BB = loop2MBB;
   }
   BuildMI(BB, dl, TII->get(PPC::OR), Tmp4Reg).addReg(Tmp3Reg).addReg(Tmp2Reg);
-  BuildMI(BB, dl, TII->get(PPC::STWCX))
-      .addReg(Tmp4Reg)
-      .addReg(ZeroReg)
-      .addReg(PtrReg);
+  MachineInstrBuilder Store =
+      BuildMI(BB, dl, TII->get(Protect ? PPC::STWCX_PROT : PPC::STWCX))
+          .addReg(Tmp4Reg)
+          .addReg(ZeroReg)
+          .addReg(PtrReg);
+  if (Protect)
+    Store.addReg(MsrReg);
   BuildMI(BB, dl, TII->get(PPC::BCC))
       .addImm(PPC::PRED_NE_MINUS)
       .addReg(PPC::CR0)
       .addMBB(loopMBB);
   BB->addSuccessor(loopMBB);
   BB->addSuccessor(exitMBB);
+
+  if (releaseMBB) {
+    BuildMI(BB, dl, TII->get(PPC::B)).addMBB(exitMBB);
+    BB = releaseMBB;
+    BuildMI(BB, dl, TII->get(PPC::STWCX_PROT))
+        .addReg(TmpDestReg)
+        .addReg(ZeroReg)
+        .addReg(PtrReg)
+        .addReg(MsrReg);
+    BB->addSuccessor(exitMBB);
+  }
 
   //  exitMBB:
   //   ...
@@ -14728,10 +14805,11 @@ PPCTargetLowering::EmitInstrWithCustomInserter(MachineInstr &MI,
   else if (MI.getOpcode() == PPC::ATOMIC_CMP_SWAP_I32 ||
            MI.getOpcode() == PPC::ATOMIC_CMP_SWAP_I64 ||
            (Subtarget.hasPartwordAtomics() &&
-            MI.getOpcode() == PPC::ATOMIC_CMP_SWAP_I8) ||
-           (Subtarget.hasPartwordAtomics() &&
-            MI.getOpcode() == PPC::ATOMIC_CMP_SWAP_I16)) {
+            !Subtarget.hasProtectedReservations() &&
+            (MI.getOpcode() == PPC::ATOMIC_CMP_SWAP_I8 ||
+             MI.getOpcode() == PPC::ATOMIC_CMP_SWAP_I16))) {
     bool is64bit = MI.getOpcode() == PPC::ATOMIC_CMP_SWAP_I64;
+    const bool Protect = Subtarget.hasProtectedReservations();
 
     auto LoadMnemonic = PPC::LDARX;
     auto StoreMnemonic = PPC::STDCX;
@@ -14757,6 +14835,10 @@ PPCTargetLowering::EmitInstrWithCustomInserter(MachineInstr &MI,
       StoreMnemonic = PPC::STDCX;
       break;
     }
+    if (Protect) {
+      LoadMnemonic = is64bit ? PPC::LDARX_PROT : PPC::LWARX_PROT;
+      StoreMnemonic = is64bit ? PPC::STDCX_PROT : PPC::STWCX_PROT;
+    }
     MachineRegisterInfo &RegInfo = F->getRegInfo();
     Register dest = MI.getOperand(0).getReg();
     Register ptrA = MI.getOperand(1).getReg();
@@ -14768,9 +14850,13 @@ PPCTargetLowering::EmitInstrWithCustomInserter(MachineInstr &MI,
 
     MachineBasicBlock *loop1MBB = F->CreateMachineBasicBlock(LLVM_BB);
     MachineBasicBlock *loop2MBB = F->CreateMachineBasicBlock(LLVM_BB);
+    MachineBasicBlock *releaseMBB =
+        Protect ? F->CreateMachineBasicBlock(LLVM_BB) : nullptr;
     MachineBasicBlock *exitMBB = F->CreateMachineBasicBlock(LLVM_BB);
     F->insert(It, loop1MBB);
     F->insert(It, loop2MBB);
+    if (releaseMBB)
+      F->insert(It, releaseMBB);
     F->insert(It, exitMBB);
     exitMBB->splice(exitMBB->begin(), BB,
                     std::next(MachineBasicBlock::iterator(MI)), BB->end());
@@ -14778,18 +14864,32 @@ PPCTargetLowering::EmitInstrWithCustomInserter(MachineInstr &MI,
 
     //  thisMBB:
     //   ...
+    //   [mfmsr msr]
     //   fallthrough --> loopMBB
+    Register MsrReg;
+    if (Protect) {
+      MsrReg = RegInfo.createVirtualRegister(&PPC::G8RCRegClass);
+      BuildMI(BB, dl, TII->get(PPC::MFMSR_PROT), MsrReg);
+    }
     BB->addSuccessor(loop1MBB);
 
     // loop1MBB:
     //   l[bhwd]arx dest, ptr
     //   cmp[wd] dest, oldval
-    //   bne- exitBB
+    //   bne- exitBB [releaseBB]
     // loop2MBB:
     //   st[bhwd]cx. newval, ptr
     //   bne- loopMBB
     //   b exitBB
+    // [releaseBB:]
+    //   [st[wd]cx. dest, ptr]
+    //   [fallthrough --> exitBB]
     // exitBB:
+    //
+    // With protected reservations, l[wd]arx and st[wd]cx. are the _PROT
+    // pseudos restoring msr, and a mismatch stores the observed value in
+    // releaseBB to end the reservation and restore the MSR.
+    MachineBasicBlock *MismatchMBB = releaseMBB ? releaseMBB : exitMBB;
     BB = loop1MBB;
     BuildMI(BB, dl, TII->get(LoadMnemonic), dest).addReg(ptrA).addReg(ptrB);
     BuildMI(BB, dl, TII->get(is64bit ? PPC::CMPD : PPC::CMPW), CrReg)
@@ -14798,15 +14898,17 @@ PPCTargetLowering::EmitInstrWithCustomInserter(MachineInstr &MI,
     BuildMI(BB, dl, TII->get(PPC::BCC))
         .addImm(PPC::PRED_NE_MINUS)
         .addReg(CrReg)
-        .addMBB(exitMBB);
+        .addMBB(MismatchMBB);
     BB->addSuccessor(loop2MBB);
-    BB->addSuccessor(exitMBB);
+    BB->addSuccessor(MismatchMBB);
 
     BB = loop2MBB;
-    BuildMI(BB, dl, TII->get(StoreMnemonic))
-        .addReg(newval)
-        .addReg(ptrA)
-        .addReg(ptrB);
+    MachineInstrBuilder Store = BuildMI(BB, dl, TII->get(StoreMnemonic))
+                                    .addReg(newval)
+                                    .addReg(ptrA)
+                                    .addReg(ptrB);
+    if (Protect)
+      Store.addReg(MsrReg);
     BuildMI(BB, dl, TII->get(PPC::BCC))
         .addImm(PPC::PRED_NE_MINUS)
         .addReg(PPC::CR0)
@@ -14814,6 +14916,16 @@ PPCTargetLowering::EmitInstrWithCustomInserter(MachineInstr &MI,
     BuildMI(BB, dl, TII->get(PPC::B)).addMBB(exitMBB);
     BB->addSuccessor(loop1MBB);
     BB->addSuccessor(exitMBB);
+
+    if (releaseMBB) {
+      BB = releaseMBB;
+      BuildMI(BB, dl, TII->get(StoreMnemonic))
+          .addReg(dest)
+          .addReg(ptrA)
+          .addReg(ptrB)
+          .addReg(MsrReg);
+      BB->addSuccessor(exitMBB);
+    }
 
     //  exitMBB:
     //   ...
@@ -14823,9 +14935,10 @@ PPCTargetLowering::EmitInstrWithCustomInserter(MachineInstr &MI,
     // We must use 64-bit registers for addresses when targeting 64-bit,
     // since we're actually doing arithmetic on them.  Other registers
     // can be 32-bit.
-    bool is64bit = Subtarget.isPPC64();
+    bool is64bit = Subtarget.has64BitAddresses();
     bool isLittleEndian = Subtarget.isLittleEndian();
     bool is8bit = MI.getOpcode() == PPC::ATOMIC_CMP_SWAP_I8;
+    const bool Protect = Subtarget.hasProtectedReservations();
 
     Register dest = MI.getOperand(0).getReg();
     Register ptrA = MI.getOperand(1).getReg();
@@ -14836,9 +14949,13 @@ PPCTargetLowering::EmitInstrWithCustomInserter(MachineInstr &MI,
 
     MachineBasicBlock *loop1MBB = F->CreateMachineBasicBlock(LLVM_BB);
     MachineBasicBlock *loop2MBB = F->CreateMachineBasicBlock(LLVM_BB);
+    MachineBasicBlock *releaseMBB =
+        Protect ? F->CreateMachineBasicBlock(LLVM_BB) : nullptr;
     MachineBasicBlock *exitMBB = F->CreateMachineBasicBlock(LLVM_BB);
     F->insert(It, loop1MBB);
     F->insert(It, loop2MBB);
+    if (releaseMBB)
+      F->insert(It, releaseMBB);
     F->insert(It, exitMBB);
     exitMBB->splice(exitMBB->begin(), BB,
                     std::next(MachineBasicBlock::iterator(MI)), BB->end());
@@ -14952,8 +15069,19 @@ PPCTargetLowering::EmitInstrWithCustomInserter(MachineInstr &MI,
         .addReg(OldVal2Reg)
         .addReg(MaskReg);
 
+    // With protected reservations, the MSR is read here, the loop uses
+    // LWARX_PROT and STWCX_PROT, and a mismatch stores the observed word in
+    // releaseMBB to end the reservation and restore the MSR.
+    Register MsrReg;
+    if (Protect) {
+      MsrReg = RegInfo.createVirtualRegister(&PPC::G8RCRegClass);
+      BuildMI(BB, dl, TII->get(PPC::MFMSR_PROT), MsrReg);
+    }
+    MachineBasicBlock *MismatchMBB = releaseMBB ? releaseMBB : exitMBB;
+
     BB = loop1MBB;
-    BuildMI(BB, dl, TII->get(PPC::LWARX), TmpDestReg)
+    BuildMI(BB, dl, TII->get(Protect ? PPC::LWARX_PROT : PPC::LWARX),
+            TmpDestReg)
         .addReg(ZeroReg)
         .addReg(PtrReg);
     BuildMI(BB, dl, TII->get(PPC::AND), TmpReg)
@@ -14965,9 +15093,9 @@ PPCTargetLowering::EmitInstrWithCustomInserter(MachineInstr &MI,
     BuildMI(BB, dl, TII->get(PPC::BCC))
         .addImm(PPC::PRED_NE)
         .addReg(CrReg)
-        .addMBB(exitMBB);
+        .addMBB(MismatchMBB);
     BB->addSuccessor(loop2MBB);
-    BB->addSuccessor(exitMBB);
+    BB->addSuccessor(MismatchMBB);
 
     BB = loop2MBB;
     BuildMI(BB, dl, TII->get(PPC::ANDC), Tmp2Reg)
@@ -14976,10 +15104,13 @@ PPCTargetLowering::EmitInstrWithCustomInserter(MachineInstr &MI,
     BuildMI(BB, dl, TII->get(PPC::OR), Tmp4Reg)
         .addReg(Tmp2Reg)
         .addReg(NewVal3Reg);
-    BuildMI(BB, dl, TII->get(PPC::STWCX))
-        .addReg(Tmp4Reg)
-        .addReg(ZeroReg)
-        .addReg(PtrReg);
+    MachineInstrBuilder Store =
+        BuildMI(BB, dl, TII->get(Protect ? PPC::STWCX_PROT : PPC::STWCX))
+            .addReg(Tmp4Reg)
+            .addReg(ZeroReg)
+            .addReg(PtrReg);
+    if (Protect)
+      Store.addReg(MsrReg);
     BuildMI(BB, dl, TII->get(PPC::BCC))
         .addImm(PPC::PRED_NE)
         .addReg(PPC::CR0)
@@ -14987,6 +15118,16 @@ PPCTargetLowering::EmitInstrWithCustomInserter(MachineInstr &MI,
     BuildMI(BB, dl, TII->get(PPC::B)).addMBB(exitMBB);
     BB->addSuccessor(loop1MBB);
     BB->addSuccessor(exitMBB);
+
+    if (releaseMBB) {
+      BB = releaseMBB;
+      BuildMI(BB, dl, TII->get(PPC::STWCX_PROT))
+          .addReg(TmpDestReg)
+          .addReg(ZeroReg)
+          .addReg(PtrReg)
+          .addReg(MsrReg);
+      BB->addSuccessor(exitMBB);
+    }
 
     //  exitMBB:
     //   ...
@@ -21300,6 +21441,10 @@ PPCTargetLowering::shouldExpandAtomicCmpXchgInIR(AtomicCmpXchgInst *AI) const {
   unsigned Size = AI->getNewValOperand()->getType()->getPrimitiveSizeInBits();
   if (shouldInlineQuadwordAtomics() && Size == 128)
     return AtomicExpansionKind::MaskedIntrinsic;
+  // A protected reservation needs the MSR read before the loop and a store
+  // on every path out of it, so the custom inserter emits the whole loop.
+  if (Subtarget.hasProtectedReservations())
+    return AtomicExpansionKind::None;
   return AtomicExpansionKind::LLSC;
 }
 

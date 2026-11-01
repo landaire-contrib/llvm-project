@@ -2150,6 +2150,19 @@ def STWCX : XForm_1_memOp<31, 150, (outs), (ins gprc:$RST, (memrr $RA, $RB):$add
                     "stwcx. $RST, $addr", IIC_LdStSTWCX, []>, isRecordForm;
 }
 
+// Reservations for the Xbox 360, which must run with external interrupts
+// disabled in the form its kernel loader accepts. LWARX_PROT prints as
+// "mtmsrd r13, 1; lwarx" and STWCX_PROT as "stwcx.; mtmsrd $msr, 1", where
+// $msr is the MSR read by MFMSR_PROT before the loop. Each pair stays one
+// instruction until the asm printer, so no pass can separate it.
+let mayLoad = 1, hasSideEffects = 1, Size = 8, Uses = [X13] in
+def LWARX_PROT : PPCEmitTimePseudo<(outs gprc:$RST), (ins memrr:$addr),
+                                   "#LWARX_PROT", []>;
+let Defs = [CR0], mayStore = 1, hasSideEffects = 1, Size = 8 in
+def STWCX_PROT : PPCEmitTimePseudo<(outs), (ins gprc:$RST, memrr:$addr,
+                                                g8rc:$msr),
+                                   "#STWCX_PROT", []>;
+
 let mayStore = 1, mayLoad = 0, hasSideEffects = 0 in
 def STWAT : X_RD5_RS5_IM5<31, 710, (outs), (ins gprc:$RST, gprc:$RA, u5imm:$RB),
                           "stwat $RST, $RA, $RB", IIC_LdStStore>,
