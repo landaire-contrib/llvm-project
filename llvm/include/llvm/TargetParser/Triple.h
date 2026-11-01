@@ -319,7 +319,8 @@ public:
 
     PAuthTest,
     MTIA,
-    LastEnvironmentType = MTIA
+    ILP32,
+    LastEnvironmentType = ILP32
   };
   enum ObjectFormatType {
     UnknownObjectFormat,

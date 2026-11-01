@@ -416,6 +416,8 @@ StringRef Triple::getEnvironmentTypeName(EnvironmentType Kind) {
     return "pauthtest";
   case MTIA:
     return "mtia";
+  case ILP32:
+    return "ilp32";
   case LLVM:
     return "llvm";
   case Mlibc:
@@ -820,6 +822,7 @@ static Triple::EnvironmentType parseEnvironment(StringRef EnvironmentName) {
       .StartsWith("llvm", Triple::LLVM)
       .StartsWith("mlibc", Triple::Mlibc)
       .StartsWith("mtia", Triple::MTIA)
+      .StartsWith("ilp32", Triple::ILP32)
       .Default(Triple::UnknownEnvironment);
 }
 

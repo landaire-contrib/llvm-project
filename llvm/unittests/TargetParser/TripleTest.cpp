@@ -1457,6 +1457,19 @@ TEST(TripleTest, ParsedIDs) {
   EXPECT_EQ(Triple::Managarm, T.getOS());
   EXPECT_EQ(Triple::Mlibc, T.getEnvironment());
 
+  T = Triple("powerpc64-unknown-xbox360-ilp32");
+  EXPECT_EQ(Triple::ppc64, T.getArch());
+  EXPECT_EQ(Triple::UnknownVendor, T.getVendor());
+  EXPECT_EQ(Triple::Xbox360, T.getOS());
+  EXPECT_EQ(Triple::ILP32, T.getEnvironment());
+  EXPECT_EQ("powerpc64-unknown-xbox360-ilp32", T.str());
+
+  T = Triple("powerpc64-unknown-xbox360");
+  EXPECT_EQ(Triple::ppc64, T.getArch());
+  EXPECT_EQ(Triple::UnknownVendor, T.getVendor());
+  EXPECT_EQ(Triple::Xbox360, T.getOS());
+  EXPECT_EQ(Triple::UnknownEnvironment, T.getEnvironment());
+
   T = Triple("huh");
   EXPECT_EQ(Triple::UnknownArch, T.getArch());
 
