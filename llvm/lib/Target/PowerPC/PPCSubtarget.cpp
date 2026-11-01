@@ -120,10 +120,15 @@ void PPCSubtarget::initSubtargetFeatures(StringRef CPU, StringRef TuneCPU,
 
   if (isXbox360() && (!isPPC64() || isLittleEndian() ||
                       getTargetTriple().getOS() != Triple::Xbox360 ||
-                      !getTargetTriple().isPPC64ILP32ABI() ||
                       !getTargetTriple().isOSBinFormatELF()))
-    report_fatal_error("xbox360 requires a big-endian "
-                       "powerpc64-unknown-xbox360-ilp32 ELF target\n",
+    report_fatal_error(
+        "xbox360 requires a big-endian powerpc64-unknown-xbox360 ELF target\n",
+        false);
+  // The hypervisor is linked at fixed addresses. The Xbox 360 PIC model uses
+  // 32-bit GOT entries.
+  if (isXbox360() && has64BitAddresses() && TM.isPositionIndependent())
+    report_fatal_error("position-independent code requires the xbox360 ilp32 "
+                       "environment\n",
                        false);
   // Xenon has no VSX, and VMX128 encodings overlap later instructions.
   if (HasVMX128 && HasVSX)

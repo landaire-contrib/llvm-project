@@ -2,6 +2,11 @@
 ; RUN:   | FileCheck %s
 ; RUN: llc -mtriple=powerpc64-unknown-xbox360-ilp32 -filetype=obj < %s \
 ; RUN:   | llvm-readobj -r - | FileCheck %s --check-prefix=RELOC
+; RUN: not llc -mtriple=powerpc64-unknown-xbox360 < %s 2>&1 \
+; RUN:   | FileCheck %s --check-prefix=HV
+
+; The hypervisor has no thread pointer.
+; HV: thread-local storage requires the xbox360 ilp32 environment
 
 ; The GOT holds 32-bit thread-pointer offsets, so the initial-exec load is a
 ; word load with the 32-bit relocation.

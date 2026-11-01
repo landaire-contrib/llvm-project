@@ -3502,6 +3502,12 @@ SDValue PPCTargetLowering::LowerGlobalTLSAddressLinux(SDValue Op,
   if (DAG.getTarget().useEmulatedTLS())
     return LowerToTLSEmulatedModel(GA, DAG);
 
+  // The Xbox 360 hypervisor has no thread pointer: r13 holds the processor
+  // control block.
+  if (Subtarget.isXbox360() && Subtarget.has64BitAddresses())
+    report_fatal_error(
+        "thread-local storage requires the xbox360 ilp32 environment\n", false);
+
   SDLoc dl(GA);
   const GlobalValue *GV = GA->getGlobal();
   EVT PtrVT = getPointerTy(DAG.getDataLayout());
@@ -3909,12 +3915,16 @@ SDValue PPCTargetLowering::LowerVACOPY(SDValue Op, SelectionDAG &DAG) const {
   assert(Subtarget.uses32BitSVR4ABI() &&
          "LowerVACOPY is only supported for PPC32 SVR4 and Xbox 360");
 
-  if (Subtarget.isXbox360())
+  // The Xbox 360 va_list is a pointer to the next argument slot.
+  if (Subtarget.isXbox360()) {
+    unsigned PtrSize = Subtarget.has64BitAddresses() ? 8 : 4;
     return DAG.getMemcpy(Op.getOperand(0), Op, Op.getOperand(1),
                          Op.getOperand(2),
-                         DAG.getConstant(4, SDLoc(Op), MVT::i32), Align(4),
-                         Align(4), false, true, /*CI=*/nullptr, std::nullopt,
-                         MachinePointerInfo(), MachinePointerInfo());
+                         DAG.getConstant(PtrSize, SDLoc(Op), MVT::i32),
+                         Align(PtrSize), Align(PtrSize), false, true,
+                         /*CI=*/nullptr, std::nullopt, MachinePointerInfo(),
+                         MachinePointerInfo());
+  }
 
   // We have to copy the entire va_list struct:
   // 2*sizeof(char) + 2 Byte alignment + 2*sizeof(char*) = 12 Byte
@@ -4650,7 +4660,8 @@ SDValue PPCTargetLowering::LowerFormalArguments_32SVR4(
     for (unsigned I = 0, E = Ins.size(); I != E; ++I) {
       if (!Ins[I].Flags.isSRet())
         continue;
-      Register Reg = MF.getRegInfo().createVirtualRegister(&PPC::GPRCRegClass);
+      Register Reg = MF.getRegInfo().createVirtualRegister(
+          getRegClassFor(InVals[I].getSimpleValueType()));
       FuncInfo->setSRetReturnReg(Reg);
       MemOps.push_back(DAG.getCopyToReg(Chain, dl, Reg, InVals[I]));
       break;
@@ -6371,7 +6382,9 @@ SDValue PPCTargetLowering::LowerCall_32SVR4(
   // Set up a copy of the stack pointer for use loading and storing any
   // arguments that may not fit in the registers available for argument
   // passing.
-  SDValue StackPtr = DAG.getRegister(PPC::R1, MVT::i32);
+  SDValue StackPtr = Subtarget.has64BitAddresses()
+                         ? DAG.getRegister(PPC::X1, MVT::i64)
+                         : DAG.getRegister(PPC::R1, MVT::i32);
 
   SmallVector<std::pair<unsigned, SDValue>, 8> RegsToPass;
   SmallVector<TailCallArgumentInfo, 8> TailCallArguments;
@@ -8345,10 +8358,12 @@ PPCTargetLowering::LowerReturn(SDValue Chain, CallingConv::ID CallConv,
   if (Register SRetReg = DAG.getMachineFunction()
                              .getInfo<PPCFunctionInfo>()
                              ->getSRetReturnReg()) {
-    SDValue Val = DAG.getCopyFromReg(Chain, dl, SRetReg, MVT::i32);
-    Chain = DAG.getCopyToReg(Chain, dl, PPC::R3, Val, Glue);
+    MVT PtrVT = getPointerTy(DAG.getDataLayout());
+    MCRegister R3 = PtrVT == MVT::i64 ? PPC::X3 : PPC::R3;
+    SDValue Val = DAG.getCopyFromReg(Chain, dl, SRetReg, PtrVT);
+    Chain = DAG.getCopyToReg(Chain, dl, R3, Val, Glue);
     Glue = Chain.getValue(1);
-    RetOps.push_back(DAG.getRegister(PPC::R3, MVT::i32));
+    RetOps.push_back(DAG.getRegister(R3, PtrVT));
   }
 
   RetOps[0] = Chain;  // Update chain.

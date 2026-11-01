@@ -1921,7 +1921,7 @@ PPCRegisterInfo::eliminateFrameIndex(MachineBasicBlock::iterator II,
   MI.getOperand(OperandBase).ChangeToRegister(StackReg, false);
   MachineOperand &OffsetRegOp = MI.getOperand(OperandBase + 1);
   OffsetRegOp.ChangeToRegister(SReg, false, false, true);
-  if (Subtarget.isXbox360()) {
+  if (Subtarget.isXbox360() && !Subtarget.has64BitAddresses()) {
     if (SReg.isPhysical())
       OffsetRegOp.setReg(getSubReg(SReg, PPC::sub_32));
     else
