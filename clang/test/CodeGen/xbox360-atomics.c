@@ -1,6 +1,8 @@
 // REQUIRES: powerpc-registered-target
 // RUN: %clang_cc1 -triple powerpc64-unknown-xbox360-ilp32 -O2 -S -o - %s \
 // RUN:   | FileCheck %s
+// RUN: %clang_cc1 -triple powerpc64-unknown-xbox360 -mrelocation-model static \
+// RUN:   -O2 -S -o - %s | FileCheck %s
 
 // Atomics compile to reservations in the protected form the Xbox 360 kernel
 // loader accepts: the MSR is read once before the loop, "mtmsrd 13, 1"

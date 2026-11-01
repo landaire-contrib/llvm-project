@@ -559,25 +559,40 @@ public:
       : PPC64ILP32TargetInfo<Target>(Triple, Opts) {}
 };
 
+// Xbox 360 titles use the ILP32 data model. The hypervisor uses LLP64: long
+// stays 32 bits, while pointers, size_t and intptr_t are 64 bits.
 template <typename Target>
-class LLVM_LIBRARY_VISIBILITY Xbox360TargetInfo
-    : public PPC64ILP32TargetInfo<Target> {
+class LLVM_LIBRARY_VISIBILITY Xbox360TargetInfo : public OSTargetInfo<Target> {
 protected:
-  void getOSDefines(const LangOptions &, const llvm::Triple &,
+  void getOSDefines(const LangOptions &, const llvm::Triple &Triple,
                     MacroBuilder &Builder) const override {
     Builder.defineMacro("_XBOX_VER", "200");
     Builder.defineMacro("_M_PPC", "5401");
     Builder.defineMacro("_M_PPCBE");
     Builder.defineMacro("_WIN32");
+    if (!Triple.isPPC64ILP32ABI())
+      Builder.defineMacro("_WIN64");
   }
 
 public:
   Xbox360TargetInfo(const llvm::Triple &Triple, const TargetOptions &Opts)
-      : PPC64ILP32TargetInfo<Target>(Triple, Opts) {
+      : OSTargetInfo<Target>(Triple, Opts) {
+    this->LongWidth = this->LongAlign = 32;
+    this->IntMaxType = TargetInfo::SignedLongLong;
+    this->Int64Type = TargetInfo::SignedLongLong;
+    if (Triple.isPPC64ILP32ABI()) {
+      this->PointerWidth = this->PointerAlign = 32;
+      this->SizeType = TargetInfo::UnsignedInt;
+    } else {
+      this->SizeType = TargetInfo::UnsignedLongLong;
+      this->PtrDiffType = TargetInfo::SignedLongLong;
+      this->IntPtrType = TargetInfo::SignedLongLong;
+    }
     this->LongDoubleWidth = this->LongDoubleAlign = 64;
     this->LongDoubleFormat = &llvm::APFloat::IEEEdouble();
     this->WCharType = TargetInfo::UnsignedShort;
     this->ABI.clear();
+    this->resetDataLayout();
   }
 
   bool setABI(const std::string &) override { return false; }
